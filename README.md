@@ -39,6 +39,7 @@ O APK debug é assinado automaticamente para testes. A publicação exige uma ch
 - `MainActivity.java`: navegação, biblioteca, edição dos dados, seletores de ficheiros, scanner, partilha e impressão.
 - `DocumentEngine.java`: importação sequencial, processamento de imagem, OCR/códigos/idioma, recorte e exportações. As operações demoradas são executadas fora da thread da interface. Depois de cada alteração guardada, `sweep` elimina as imagens que deixaram de ser referenciadas — as substituídas por rotações, filtros e recortes, as das páginas eliminadas e as deixadas por operações interrompidas — preservando a página atual e o respetivo original.
 - `CropView.java`: seleção dos quatro cantos.
+- `res/values/strings.xml`: todo o texto visível, incluindo plurais de páginas e documentos e as descrições para leitores de ecrã. As categorias guardadas na base de dados e as ações de página (`DocumentEngine.ACTION_*`) são chaves estáveis independentes das etiquetas traduzíveis, para que uma tradução não altere dados nem comportamento.
 - `Document`, `DocumentIndex`, `DocumentDao`, `ScannerDatabase`: persistência e atualização transacional do índice de pesquisa [FTS4](https://www.sqlite.org/fts3.html). Inclui migração da versão inicial sem índice para a versão 2 e da versão 2 para a versão 3, que regista os campos corrigidos pelo utilizador.
 - `Metadata.java`: classificação, extração e normalização de pesquisa, com testes unitários. `Metadata.edit` marca um campo como corrigido à mão e `Metadata.extract` respeita essa marca.
 
@@ -52,6 +53,8 @@ O APK debug é assinado automaticamente para testes. A publicação exige uma ch
 - O PDF guarda texto OCR sob a imagem opaca, mantendo o aspeto do documento e permitindo pesquisa/seleção. A leitura depende também do visualizador PDF.
 - Não há sincronização, encriptação adicional da base de dados, bloqueio biométrico nem serviço de processamento em segundo plano. Mantenha a aplicação aberta durante uma importação longa. O backup automático está desativado; exporte os documentos que pretende conservar antes de desinstalar.
 - A captura real com câmara, a qualidade em documentos físicos e a impressão numa impressora requerem validação no equipamento de destino.
+- A interface está apenas em português: `strings.xml` permite traduzir, mas não existem ainda ficheiros `values-<idioma>`. As datas usam sempre o formato pt-PT.
+- Acessibilidade: os elementos interativos têm descrição, as etiquetas de categoria são anunciadas como botões selecionáveis com área mínima de 48 dp e o texto secundário cumpre o contraste WCAG AA. Falta validar uma passagem completa com o TalkBack num dispositivo real.
 
 ## Testes
 

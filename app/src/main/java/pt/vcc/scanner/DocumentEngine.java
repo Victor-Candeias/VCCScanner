@@ -19,18 +19,23 @@ import java.util.*;
 
 public class DocumentEngine {
     public static final int MAX_PAGES = 50;
+    /**
+     * Stable keys for the page filters. They are deliberately not the menu labels: the labels live in
+     * strings.xml and may be translated, while these identify the operation to apply.
+     */
+    public static final String ACTION_ROTATE = "rotate", ACTION_ORIGINAL = "original", ACTION_GRAYSCALE = "grayscale", ACTION_MONOCHROME = "monochrome", ACTION_DOCUMENT = "document";
     private final Context context;
     public DocumentEngine(Context context) { this.context = context.getApplicationContext(); }
     public File directory(String id) { File dir = new File(context.getFilesDir(), "documents/" + id); dir.mkdirs(); return dir; }
     public JSONArray pages(Document d) throws JSONException { return new JSONArray(d.pages); }
     public Bitmap bitmap(String path) throws IOException {
         Bitmap b = BitmapFactory.decodeFile(path);
-        if (b == null) throw new IOException("Não foi possível ler a imagem.");
+        if (b == null) throw new IOException(context.getString(R.string.engine_error_image_unreadable));
         return b;
     }
     public Document create() {
         Document d = new Document(); d.id = UUID.randomUUID().toString(); d.created = System.currentTimeMillis();
-        d.title = "Documento " + new java.text.SimpleDateFormat("dd MMM · HH:mm", new Locale("pt", "PT")).format(new Date());
+        d.title = context.getString(R.string.engine_default_title, new java.text.SimpleDateFormat(context.getString(R.string.engine_title_date_format), new Locale("pt", "PT")).format(new Date()));
         return d;
     }
     public void importUris(Document d, List<Uri> uris) throws Exception {
@@ -41,9 +46,9 @@ public class DocumentEngine {
                 String mime = context.getContentResolver().getType(uri);
                 if ("application/pdf".equals(mime) || (mime == null && uri.toString().toLowerCase(Locale.ROOT).endsWith(".pdf"))) {
                     try (ParcelFileDescriptor fd = context.getContentResolver().openFileDescriptor(uri, "r")) {
-                        if (fd == null) throw new IOException("Não foi possível abrir o PDF.");
+                        if (fd == null) throw new IOException(context.getString(R.string.engine_error_pdf_unreadable));
                         try (PdfRenderer renderer = new PdfRenderer(fd)) {
-                            if (renderer.getPageCount() + list.length() > MAX_PAGES) throw new IOException("Limite de 50 páginas por documento.");
+                            if (renderer.getPageCount() + list.length() > MAX_PAGES) throw new IOException(context.getResources().getQuantityString(R.plurals.engine_error_page_limit, MAX_PAGES, MAX_PAGES));
                             for (int i=0; i<renderer.getPageCount(); i++) {
                                 try (PdfRenderer.Page page = renderer.openPage(i)) {
                                     float scale = Math.min(2.5f, 2200f / Math.max(page.getWidth(), page.getHeight()));
@@ -55,7 +60,7 @@ public class DocumentEngine {
                         }
                     }
                 } else {
-                    if (list.length() >= MAX_PAGES) throw new IOException("Limite de 50 páginas por documento.");
+                    if (list.length() >= MAX_PAGES) throw new IOException(context.getResources().getQuantityString(R.plurals.engine_error_page_limit, MAX_PAGES, MAX_PAGES));
                     ImageDecoder.Source source = ImageDecoder.createSource(context.getContentResolver(), uri);
                     Bitmap b = ImageDecoder.decodeBitmap(source, (decoder, info, src) -> {
                         int w = info.getSize().getWidth(), h = info.getSize().getHeight();
@@ -66,13 +71,13 @@ public class DocumentEngine {
                     try { add(d, list, b, added); } finally { b.recycle(); }
                 }
             }
-            if (list.length() == 0) throw new IOException("O ficheiro não contém páginas.");
+            if (list.length() == 0) throw new IOException(context.getString(R.string.engine_error_no_pages));
             d.pages = list.toString(); rebuild(d);
         } catch (Exception e) { for (File file : added) file.delete(); throw e; }
     }
     private void add(Document d, JSONArray list, Bitmap b, List<File> added) throws Exception {
         File f = new File(directory(d.id), UUID.randomUUID()+".jpg"); added.add(f);
-        try (OutputStream out = new FileOutputStream(f)) { if (!b.compress(Bitmap.CompressFormat.JPEG, 92, out)) throw new IOException("Erro ao guardar imagem."); }
+        try (OutputStream out = new FileOutputStream(f)) { if (!b.compress(Bitmap.CompressFormat.JPEG, 92, out)) throw new IOException(context.getString(R.string.engine_error_image_save)); }
         JSONObject page = recognize(b); page.put("path", f.getAbsolutePath()); page.put("original", f.getAbsolutePath()); list.put(page);
     }
     private JSONObject recognize(Bitmap b) throws Exception {
@@ -105,18 +110,18 @@ public class DocumentEngine {
     }
     public void edit(Document d, int index, String action) throws Exception {
         JSONArray list = pages(d); JSONObject old = list.getJSONObject(index);
-        Bitmap source = bitmap(old.getString(action.equals("Original") ? "original" : "path"));
+        Bitmap source = bitmap(old.getString(ACTION_ORIGINAL.equals(action) ? "original" : "path"));
         Bitmap result = null;
         try {
-            if (action.equals("Rodar")) {
+            if (ACTION_ROTATE.equals(action)) {
                 Matrix m = new Matrix(); m.postRotate(90); result = Bitmap.createBitmap(source, 0, 0, source.getWidth(), source.getHeight(), m, true);
             } else {
                 result = Bitmap.createBitmap(source.getWidth(), source.getHeight(), Bitmap.Config.ARGB_8888);
                 ColorMatrix matrix = new ColorMatrix();
-                if (!action.equals("Original")) matrix.setSaturation(0);
-                if (action.equals("Documento")) matrix.postConcat(new ColorMatrix(new float[]{1.45f,0,0,0,-35,0,1.45f,0,0,-35,0,0,1.45f,0,-35,0,0,0,1,0}));
+                if (!ACTION_ORIGINAL.equals(action)) matrix.setSaturation(0);
+                if (ACTION_DOCUMENT.equals(action)) matrix.postConcat(new ColorMatrix(new float[]{1.45f,0,0,0,-35,0,1.45f,0,0,-35,0,0,1.45f,0,-35,0,0,0,1,0}));
                 Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG); paint.setColorFilter(new ColorMatrixColorFilter(matrix)); new Canvas(result).drawBitmap(source, 0, 0, paint);
-                if (action.equals("Preto e branco")) {
+                if (ACTION_MONOCHROME.equals(action)) {
                     int[] row = new int[result.getWidth()];
                     for (int y=0; y<result.getHeight(); y++) { result.getPixels(row, 0, row.length, 0, y, row.length, 1); for (int x=0; x<row.length; x++) row[x] = Color.red(row[x]) > 160 ? Color.WHITE : Color.BLACK; result.setPixels(row, 0, row.length, 0, y, row.length, 1); }
                 }
@@ -131,13 +136,13 @@ public class DocumentEngine {
         for (int i=0;i<4;i++) {
             int a=i*2, b=((i+1)%4)*2, c=((i+2)%4)*2;
             float cross=(corners[b]-corners[a])*(corners[c+1]-corners[b+1])-(corners[b+1]-corners[a+1])*(corners[c]-corners[b]);
-            if(cross<.005f)throw new IOException("Posicione os quatro cantos sem cruzar as linhas.");
+            if(cross<.005f)throw new IOException(context.getString(R.string.engine_error_crossed_corners));
         }
         JSONArray list=pages(d);JSONObject old=list.getJSONObject(index);Bitmap source=bitmap(old.getString("path"));Bitmap result=null;
         try {
             float[] src=corners.clone();for(int i=0;i<4;i++){src[i*2]*=source.getWidth();src[i*2+1]*=source.getHeight();}
             int w=Math.max(1,Math.round(Math.max(distance(src,0,1),distance(src,3,2))));int h=Math.max(1,Math.round(Math.max(distance(src,0,3),distance(src,1,2))));
-            float[] dest={0,0,w,0,w,h,0,h};Matrix matrix=new Matrix();if(!matrix.setPolyToPoly(src,0,dest,0,4))throw new IOException("Recorte inválido.");
+            float[] dest={0,0,w,0,w,h,0,h};Matrix matrix=new Matrix();if(!matrix.setPolyToPoly(src,0,dest,0,4))throw new IOException(context.getString(R.string.engine_error_invalid_crop));
             result=Bitmap.createBitmap(w,h,Bitmap.Config.ARGB_8888);result.eraseColor(Color.WHITE);new Canvas(result).drawBitmap(source,matrix,new Paint(Paint.FILTER_BITMAP_FLAG));
             JSONObject next=recognize(result);File file=new File(directory(d.id),UUID.randomUUID()+".jpg");try(OutputStream out=new FileOutputStream(file)){result.compress(Bitmap.CompressFormat.JPEG,94,out);}
             next.put("path",file.getAbsolutePath()).put("original",old.getString("original"));list.put(index,next);d.pages=list.toString();rebuild(d);
@@ -146,7 +151,7 @@ public class DocumentEngine {
     private float distance(float[] p,int a,int b){return (float)Math.hypot(p[a*2]-p[b*2],p[a*2+1]-p[b*2+1]);}
     public File export(Document d, String type) throws Exception {
         File dir = new File(context.getCacheDir(), "exports"); dir.mkdirs();
-        String name = d.title.replaceAll("[^\\p{L}\\p{N} ._-]", "_"); if (name.trim().isEmpty()) name = "Documento";
+        String name = d.title.replaceAll("[^\\p{L}\\p{N} ._-]", "_"); if (name.trim().isEmpty()) name = context.getString(R.string.engine_export_fallback_name);
         if (name.length() > 80) name = name.substring(0, 80);
         File file = new File(dir, name + "-" + System.currentTimeMillis() + "." + type);
         if (type.equals("txt")) { try (Writer writer = new OutputStreamWriter(new FileOutputStream(file), java.nio.charset.StandardCharsets.UTF_8)) { writer.write(d.text); } return file; }

@@ -1,0 +1,183 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">VCC Scanner</string>
+
+    <!-- Shared actions -->
+    <string name="action_cancel">Cancelar</string>
+    <string name="action_clear">Limpar</string>
+    <string name="action_apply">Aplicar</string>
+    <string name="action_save">Guardar</string>
+    <string name="action_delete">Eliminar</string>
+    <string name="action_close">Fechar</string>
+    <string name="value_empty">—</string>
+
+    <!-- Categories. The values persisted in the database are the canonical keys in
+         MainActivity.CATEGORIES and Metadata.category; these are only their display names. -->
+    <string name="category_all">Todos</string>
+    <string name="category_invoices">Faturas</string>
+    <string name="category_receipts">Recibos</string>
+    <string name="category_contracts">Contratos</string>
+    <string name="category_manuals">Manuais</string>
+    <string name="category_personal">Pessoais</string>
+    <string name="category_other">Outros</string>
+
+    <!-- Home -->
+    <string name="home_eyebrow">"VCC  /  SCANNER"</string>
+    <string name="home_title">O seu arquivo,\nsimplificado.</string>
+    <string name="home_subtitle">Digitalize. Encontre. Leve consigo.</string>
+    <string name="home_hero_title">Papel em ordem. Espaço para mais.</string>
+    <string name="home_hero_body">Transforme documentos em ficheiros pesquisáveis, guardados no seu dispositivo.</string>
+    <string name="home_new_scan">"＋  Nova digitalização"</string>
+    <string name="home_search_hint">Pesquisar texto, NIF, empresa…</string>
+    <string name="home_filters_active">"Filtros ativos  ·  Alterar"</string>
+    <string name="home_filters_idle">Filtrar por data, empresa, valor ou etiquetas</string>
+    <string name="home_documents">Documentos</string>
+    <plurals name="home_documents_on_device">
+        <item quantity="one">%d no dispositivo</item>
+        <item quantity="other">%d no dispositivo</item>
+    </plurals>
+    <string name="home_privacy">PRIVADO POR NATUREZA\nSem conta. Documentos armazenados localmente.</string>
+    <string name="home_empty_title">O seu próximo documento começa aqui</string>
+    <string name="home_empty_body">Digitalize com a câmara ou importe imagens e PDFs. O texto fica disponível para pesquisa.</string>
+    <string name="home_no_results_title">Nenhum documento encontrado</string>
+    <string name="home_no_results_body">Experimente outra palavra ou categoria.</string>
+
+    <!-- Document card -->
+    <string name="card_date_format">dd MMM yyyy</string>
+    <string name="card_meta">"%1$s  ·  %2$s"</string>
+    <string name="card_company_total">"%1$s  ·  %2$s €"</string>
+    <plurals name="page_count">
+        <item quantity="one">%d página</item>
+        <item quantity="other">%d páginas</item>
+    </plurals>
+
+    <!-- Filters -->
+    <string name="filters_title">Filtrar documentos</string>
+    <string name="filters_company">Empresa</string>
+    <string name="filters_date">Data (ex.: 09/2026)</string>
+    <string name="filters_total">Valor (ex.: 19,70)</string>
+    <string name="filters_tag">Etiqueta</string>
+
+    <!-- New document -->
+    <string name="new_document_title">Nova digitalização</string>
+    <string name="new_document_append_title">Adicionar páginas</string>
+    <string-array name="new_document_sources">
+        <item>Digitalizar com a câmara</item>
+        <item>Importar imagens da galeria</item>
+        <item>Importar PDF</item>
+        <item>Importar ficheiro (imagem ou PDF)</item>
+    </string-array>
+
+    <!-- Document detail -->
+    <string name="detail_eyebrow">"VCC  /  DOCUMENTO"</string>
+    <string name="detail_subtitle">"%1$s  ·  Guardado no dispositivo"</string>
+    <string name="detail_back">"‹  Todos os documentos"</string>
+    <string name="detail_export">Guardar / Exportar</string>
+    <string name="detail_edit_metadata">Editar nome e dados</string>
+    <string name="detail_pages">Páginas</string>
+    <string name="detail_crop">Recortar / corrigir perspetiva</string>
+    <string name="detail_adjust">"Ajustar página  ·  Rodar / Filtros / Ordem"</string>
+    <string name="detail_add_pages">"＋  Adicionar páginas"</string>
+    <string name="detail_metadata_title">Dados do documento</string>
+    <string name="detail_metadata_note">Extração automática — confirme os valores antes de os utilizar.</string>
+    <string name="detail_metadata_body">Empresa: %1$s\nNIF: %2$s\nData: %3$s\nTotal: %4$s\nEtiquetas: %5$s</string>
+    <string name="detail_ocr_title">Texto reconhecido</string>
+    <string name="detail_language">Idioma: %1$s</string>
+    <string name="detail_language_unknown">não identificado</string>
+    <string name="detail_no_text">Não foi encontrado texto nesta imagem.</string>
+    <string name="detail_copy_text">Copiar texto</string>
+    <string name="detail_barcodes">QR / códigos de barras</string>
+    <string name="detail_delete">Eliminar documento</string>
+    <string name="detail_delete_title">Eliminar documento?</string>
+    <string name="detail_delete_message">O documento e todas as suas páginas serão eliminados deste dispositivo.</string>
+
+    <!-- Pages -->
+    <string name="page_title">Página %1$d</string>
+    <string name="page_delete_title">Eliminar esta página?</string>
+    <string-array name="page_actions">
+        <item>Rodar</item>
+        <item>Original</item>
+        <item>Escala de cinzentos</item>
+        <item>Preto e branco</item>
+        <item>Documento</item>
+        <item>Mover para cima</item>
+        <item>Mover para baixo</item>
+        <item>Eliminar página</item>
+    </string-array>
+
+    <!-- Crop -->
+    <string name="crop_title">Ajustar recorte</string>
+    <string name="crop_hint">Arraste os quatro cantos até ao limite do documento.</string>
+
+    <!-- Edit metadata -->
+    <string name="edit_title">Editar documento</string>
+    <string name="field_name">Nome</string>
+    <string name="field_company">Empresa</string>
+    <string name="field_nif">NIF</string>
+    <string name="field_date">Data</string>
+    <string name="field_total">Total</string>
+    <string name="field_tags">Etiquetas</string>
+    <string name="field_tags_hint">Etiquetas separadas por vírgulas</string>
+    <string name="error_name_required">Indique um nome</string>
+
+    <!-- Export and share -->
+    <string name="export_title">Guardar / Exportar</string>
+    <string-array name="export_options">
+        <item>PDF pesquisável</item>
+        <item>Texto reconhecido (.txt)</item>
+        <item>Imagens JPG (.zip)</item>
+        <item>Imagens PNG (.zip)</item>
+        <item>Partilhar PDF</item>
+        <item>Imprimir</item>
+    </string-array>
+    <string name="share_chooser">Partilhar documento</string>
+    <string name="share_clip_label">Documento</string>
+
+    <!-- Progress -->
+    <string name="status_processing">A processar…</string>
+    <string name="status_saving_file">A guardar ficheiro…</string>
+    <string name="status_loading_documents">A carregar documentos…</string>
+    <string name="status_preparing_camera">A preparar a câmara…</string>
+    <string name="status_importing">A importar páginas e reconhecer texto…</string>
+    <string name="status_cropping">A corrigir perspetiva e reconhecer texto…</string>
+    <string name="status_updating_page">A atualizar a página e o texto…</string>
+    <string name="status_deleting">A eliminar…</string>
+    <string name="status_saving">A guardar…</string>
+    <string name="status_preparing_export">A preparar exportação…</string>
+
+    <!-- Messages and errors -->
+    <string name="toast_busy">Aguarde até terminar o processamento.</string>
+    <string name="toast_file_saved">Ficheiro guardado.</string>
+    <string name="toast_text_copied">Texto copiado.</string>
+    <string name="error_title">Não foi possível concluir</string>
+    <string name="error_generic">Não foi possível concluir a operação.</string>
+    <string name="error_destination_unavailable">Destino indisponível.</string>
+    <string name="error_search_failed">Não foi possível pesquisar os documentos.</string>
+    <string name="error_pages_unreadable">Não foi possível ler as páginas.</string>
+    <string name="error_scanner_unavailable">Scanner indisponível. Verifique os serviços Google Play e a ligação à Internet na primeira utilização. Pode importar imagens ou PDFs.\n\n%1$s</string>
+    <string name="error_document_missing">O documento já não existe.</string>
+    <string name="error_image_unavailable">Imagem indisponível.</string>
+    <string name="error_last_page">O documento deve ter pelo menos uma página. Para o remover, use Eliminar documento.</string>
+
+    <!-- DocumentEngine -->
+    <string name="engine_title_date_format">dd MMM · HH:mm</string>
+    <string name="engine_default_title">Documento %1$s</string>
+    <string name="engine_export_fallback_name">Documento</string>
+    <string name="engine_error_image_unreadable">Não foi possível ler a imagem.</string>
+    <string name="engine_error_pdf_unreadable">Não foi possível abrir o PDF.</string>
+    <plurals name="engine_error_page_limit">
+        <item quantity="one">Limite de %d página por documento.</item>
+        <item quantity="other">Limite de %d páginas por documento.</item>
+    </plurals>
+    <string name="engine_error_no_pages">O ficheiro não contém páginas.</string>
+    <string name="engine_error_image_save">Erro ao guardar imagem.</string>
+    <string name="engine_error_crossed_corners">Posicione os quatro cantos sem cruzar as linhas.</string>
+    <string name="engine_error_invalid_crop">Recorte inválido.</string>
+
+    <!-- Accessibility -->
+    <string name="cd_open_document">Abrir %1$s</string>
+    <string name="cd_page_preview">Pré-visualização da página %1$d</string>
+    <string name="cd_crop_view">Recorte: arraste os quatro cantos até aos limites do documento</string>
+    <string name="cd_category_filter">Categoria %1$s</string>
+    <string name="cd_document_category">Categoria do documento</string>
+</resources>

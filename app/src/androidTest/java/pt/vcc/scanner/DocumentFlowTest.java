@@ -28,9 +28,9 @@ public class DocumentFlowTest {
             assertEquals(1,db.documents().search(Metadata.ftsQuery("emp")).size());
             doc.tags="Saúde";db.documents().save(doc);assertEquals(1,db.documents().search(Metadata.ftsQuery("saude")).size());
             engine.crop(doc,0,new float[]{.01f,.01f,.99f,.01f,.99f,.99f,.01f,.99f});assertTrue(doc.text.contains("501234567"));
-            engine.edit(doc,0,"Escala de cinzentos");assertTrue(doc.text.contains("501234567"));assertEquals("Faturas",doc.category);assertEquals("501234567",doc.nif);assertEquals("19,70",doc.total);
-            engine.edit(doc,0,"Rodar");assertTrue(engine.pages(doc).getJSONObject(0).getInt("width")>engine.pages(doc).getJSONObject(0).getInt("height"));assertEquals("501234567",doc.nif);
-            engine.edit(doc,0,"Original");assertEquals(1200,engine.pages(doc).getJSONObject(0).getInt("width"));
+            engine.edit(doc,0,DocumentEngine.ACTION_GRAYSCALE);assertTrue(doc.text.contains("501234567"));assertEquals("Faturas",doc.category);assertEquals("501234567",doc.nif);assertEquals("19,70",doc.total);
+            engine.edit(doc,0,DocumentEngine.ACTION_ROTATE);assertTrue(engine.pages(doc).getJSONObject(0).getInt("width")>engine.pages(doc).getJSONObject(0).getInt("height"));assertEquals("501234567",doc.nif);
+            engine.edit(doc,0,DocumentEngine.ACTION_ORIGINAL);assertEquals(1200,engine.pages(doc).getJSONObject(0).getInt("width"));
             File pdf=engine.export(doc,"pdf");assertTrue(pdf.length()>1000);
             try(ParcelFileDescriptor fd=ParcelFileDescriptor.open(pdf,ParcelFileDescriptor.MODE_READ_ONLY);PdfRenderer renderer=new PdfRenderer(fd)){
                 assertEquals(1,renderer.getPageCount());
@@ -102,13 +102,13 @@ public class DocumentFlowTest {
         File second=fixture(context,"orphan-second.png","Anexo","Segunda pagina");
         try{
             engine.importUris(doc,List.of(Uri.fromFile(first)));assertEquals(1,files(engine,doc));
-            for(int i=0;i<3;i++){engine.edit(doc,0,"Rodar");engine.sweep(doc);}
+            for(int i=0;i<3;i++){engine.edit(doc,0,DocumentEngine.ACTION_ROTATE);engine.sweep(doc);}
             // Only the current image and the imported original may survive repeated edits.
             assertEquals(2,files(engine,doc));
             engine.crop(doc,0,new float[]{.01f,.01f,.99f,.01f,.99f,.99f,.01f,.99f});engine.sweep(doc);assertEquals(2,files(engine,doc));
-            engine.edit(doc,0,"Original");engine.sweep(doc);assertEquals(1200,engine.pages(doc).getJSONObject(0).getInt("width"));assertEquals(2,files(engine,doc));
+            engine.edit(doc,0,DocumentEngine.ACTION_ORIGINAL);engine.sweep(doc);assertEquals(1200,engine.pages(doc).getJSONObject(0).getInt("width"));assertEquals(2,files(engine,doc));
             String current=engine.pages(doc).getJSONObject(0).getString("path");
-            try{engine.edit(doc,5,"Rodar");fail("Editing a missing page should fail");}catch(Exception expected){engine.sweep(doc);assertTrue("A failed edit must keep the referenced image",new File(current).exists());}
+            try{engine.edit(doc,5,DocumentEngine.ACTION_ROTATE);fail("Editing a missing page should fail");}catch(Exception expected){engine.sweep(doc);assertTrue("A failed edit must keep the referenced image",new File(current).exists());}
             engine.importUris(doc,List.of(Uri.fromFile(second)));engine.sweep(doc);
             org.json.JSONArray pages=engine.pages(doc);String removed=pages.getJSONObject(1).getString("path");
             pages.remove(1);doc.pages=pages.toString();engine.rebuild(doc);engine.sweep(doc);
