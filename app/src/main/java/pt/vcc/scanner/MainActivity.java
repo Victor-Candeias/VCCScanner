@@ -132,7 +132,7 @@ public class MainActivity extends ComponentActivity {
             Document doc=null;if(target!=null)for(Document item:db.documents().all())if(item.id.equals(target))doc=item;
             if(target!=null&&doc==null)throw new IOException("O documento já não existe.");
             boolean fresh=doc==null;if(fresh)doc=engine.create();
-            try{engine.importUris(doc,uris);db.documents().save(doc);selected=doc;documents=db.documents().all();}catch(Exception e){if(fresh)engine.deleteFiles(doc);throw e;}
+            try{engine.importUris(doc,uris);db.documents().save(doc);engine.sweep(doc);selected=doc;documents=db.documents().all();}catch(Exception e){if(fresh)engine.deleteFiles(doc);throw e;}
         },this::detail);
     }
     private void detail() {
@@ -158,7 +158,7 @@ public class MainActivity extends ComponentActivity {
     private String empty(String s){return s.isEmpty()?"—":s;}
     private void cropPage(int index){
         try{Document d=selected.copy();BitmapFactory.Options options=new BitmapFactory.Options();options.inSampleSize=2;Bitmap preview=BitmapFactory.decodeFile(engine.pages(d).getJSONObject(index).getString("path"),options);if(preview==null)throw new IOException("Imagem indisponível.");CropView view=new CropView(this,preview);LinearLayout content=column();content.setPadding(dp(12),dp(8),dp(12),0);content.addView(label("Arraste os quatro cantos até ao limite do documento.",14,MUTED));content.addView(view,new LinearLayout.LayoutParams(-1,dp(380)));
-            AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Ajustar recorte").setView(content).setNegativeButton("Cancelar",null).setPositiveButton("Aplicar",(a,b)->{float[] corners=view.corners();run("A corrigir perspetiva e reconhecer texto…",()->{engine.crop(d,index,corners);db.documents().save(d);selected=d;documents=db.documents().all();},this::detail);}).create();dialog.setOnDismissListener(v->preview.recycle());dialog.show();
+            AlertDialog dialog=new AlertDialog.Builder(this).setTitle("Ajustar recorte").setView(content).setNegativeButton("Cancelar",null).setPositiveButton("Aplicar",(a,b)->{float[] corners=view.corners();run("A corrigir perspetiva e reconhecer texto…",()->{engine.crop(d,index,corners);db.documents().save(d);engine.sweep(d);selected=d;documents=db.documents().all();},this::detail);}).create();dialog.setOnDismissListener(v->preview.recycle());dialog.show();
         }catch(Exception e){error(e.getLocalizedMessage());}
     }
     private void pageMenu(int index){
@@ -173,7 +173,7 @@ public class MainActivity extends ComponentActivity {
         if(which<=4)engine.edit(d,index,options[which]);
         else if(which==7){if(pages.length()==1)throw new IOException("O documento deve ter pelo menos uma página. Para o remover, use Eliminar documento.");pages.remove(index);d.pages=pages.toString();engine.rebuild(d);}
         else{int dest=index+(which==5?-1:1);if(dest<0||dest>=pages.length())return;Object old=pages.get(index);pages.put(index,pages.get(dest));pages.put(dest,old);d.pages=pages.toString();engine.rebuild(d);}
-        db.documents().save(d);selected=d;documents=db.documents().all();
+        db.documents().save(d);engine.sweep(d);selected=d;documents=db.documents().all();
     },this::detail);}
     private void editMetadata(){
         Document d=selected;LinearLayout content=column();content.setPadding(dp(18),dp(6),dp(18),dp(6));ScrollView scroll=new ScrollView(this);scroll.addView(content);

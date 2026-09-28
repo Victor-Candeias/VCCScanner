@@ -96,6 +96,27 @@ public class DocumentFlowTest {
             assertEquals("company",db.documents().all().get(0).edited);
         }finally{db.close();context.deleteDatabase(name);}
     }
+    @Test public void repeatedEditsDoNotAccumulateOrphanImages() throws Exception {
+        Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();DocumentEngine engine=new DocumentEngine(context);Document doc=engine.create();
+        File first=fixture(context,"orphan-fixture.png","FATURA","Empresa XYZ, Lda.","NIF: 501234567");
+        File second=fixture(context,"orphan-second.png","Anexo","Segunda pagina");
+        try{
+            engine.importUris(doc,List.of(Uri.fromFile(first)));assertEquals(1,files(engine,doc));
+            for(int i=0;i<3;i++){engine.edit(doc,0,"Rodar");engine.sweep(doc);}
+            // Only the current image and the imported original may survive repeated edits.
+            assertEquals(2,files(engine,doc));
+            engine.crop(doc,0,new float[]{.01f,.01f,.99f,.01f,.99f,.99f,.01f,.99f});engine.sweep(doc);assertEquals(2,files(engine,doc));
+            engine.edit(doc,0,"Original");engine.sweep(doc);assertEquals(1200,engine.pages(doc).getJSONObject(0).getInt("width"));assertEquals(2,files(engine,doc));
+            String current=engine.pages(doc).getJSONObject(0).getString("path");
+            try{engine.edit(doc,5,"Rodar");fail("Editing a missing page should fail");}catch(Exception expected){engine.sweep(doc);assertTrue("A failed edit must keep the referenced image",new File(current).exists());}
+            engine.importUris(doc,List.of(Uri.fromFile(second)));engine.sweep(doc);
+            org.json.JSONArray pages=engine.pages(doc);String removed=pages.getJSONObject(1).getString("path");
+            pages.remove(1);doc.pages=pages.toString();engine.rebuild(doc);engine.sweep(doc);
+            assertFalse("Deleting a page must delete its images",new File(removed).exists());
+            assertEquals(2,files(engine,doc));assertTrue(new File(current).exists());
+        }finally{engine.deleteFiles(doc);first.delete();second.delete();}
+    }
+    private static int files(DocumentEngine engine,Document d){File[] files=engine.directory(d.id).listFiles();return files==null?0:files.length;}
     private static File fixture(Context context,String name,String... lines) throws Exception {
         File file=new File(context.getCacheDir(),name);Bitmap bitmap=Bitmap.createBitmap(1200,1600,Bitmap.Config.ARGB_8888);
         try{Canvas canvas=new Canvas(bitmap);canvas.drawColor(Color.WHITE);Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);paint.setTextSize(48);paint.setColor(Color.BLACK);

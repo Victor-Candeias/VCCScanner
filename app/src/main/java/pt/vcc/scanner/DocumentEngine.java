@@ -183,6 +183,24 @@ public class DocumentEngine {
         } finally { pdf.close(); }
         return file;
     }
+    /**
+     * Deletes the images in the document directory that no page references any more, such as the ones
+     * superseded by a rotation, filter or crop and the ones left behind by an interrupted operation.
+     * Call it only after the new page list has been saved: while it is not, those files are still in use.
+     */
+    public void sweep(Document d) {
+        File[] files = directory(d.id).listFiles(); if (files == null) return;
+        Set<String> keep = new HashSet<>();
+        try {
+            JSONArray list = pages(d); if (list.length() == 0) return;
+            for (int i=0; i<list.length(); i++) {
+                JSONObject page = list.getJSONObject(i); String path = page.getString("path");
+                // Compare by name: the stored absolute path may use a different prefix for the same directory.
+                keep.add(new File(path).getName()); keep.add(new File(page.optString("original", path)).getName());
+            }
+        } catch (JSONException broken) { return; }
+        for (File file : files) if (!keep.contains(file.getName())) file.delete();
+    }
     public void deleteFiles(Document d) {
         File dir = directory(d.id); File[] files = dir.listFiles(); if (files != null) for (File file : files) file.delete(); dir.delete();
     }

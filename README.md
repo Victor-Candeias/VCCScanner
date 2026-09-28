@@ -37,7 +37,7 @@ O APK debug é assinado automaticamente para testes. A publicação exige uma ch
 ## Arquitetura
 
 - `MainActivity.java`: navegação, biblioteca, edição dos dados, seletores de ficheiros, scanner, partilha e impressão.
-- `DocumentEngine.java`: importação sequencial, processamento de imagem, OCR/códigos/idioma, recorte e exportações. As operações demoradas são executadas fora da thread da interface.
+- `DocumentEngine.java`: importação sequencial, processamento de imagem, OCR/códigos/idioma, recorte e exportações. As operações demoradas são executadas fora da thread da interface. Depois de cada alteração guardada, `sweep` elimina as imagens que deixaram de ser referenciadas — as substituídas por rotações, filtros e recortes, as das páginas eliminadas e as deixadas por operações interrompidas — preservando a página atual e o respetivo original.
 - `CropView.java`: seleção dos quatro cantos.
 - `Document`, `DocumentIndex`, `DocumentDao`, `ScannerDatabase`: persistência e atualização transacional do índice de pesquisa [FTS4](https://www.sqlite.org/fts3.html). Inclui migração da versão inicial sem índice para a versão 2 e da versão 2 para a versão 3, que regista os campos corrigidos pelo utilizador.
 - `Metadata.java`: classificação, extração e normalização de pesquisa, com testes unitários. `Metadata.edit` marca um campo como corrigido à mão e `Metadata.extract` respeita essa marca.
@@ -57,4 +57,4 @@ O APK debug é assinado automaticamente para testes. A publicação exige uma ch
 
 Os testes unitários cobrem extração de fatura portuguesa, distinção entre subtotal e total, campos ausentes, categorias, NIF inválido, pesquisa sem acentos e construção das consultas por prefixo.
 
-O teste instrumentado cria uma fatura artificial e exercita importação, OCR, índice Room, recorte, filtros, rotação, reposição do original, exportação PDF/TXT/JPG/PNG e reimportação PDF. Em Android 15+ também verifica o texto extraído da camada pesquisável do PDF. Testes separados verificam o tratamento de uma imagem inexistente e a persistência após reabrir a base de dados, incluindo atualização/eliminação do índice.
+O teste instrumentado cria uma fatura artificial e exercita importação, OCR, índice Room, recorte, filtros, rotação, reposição do original, exportação PDF/TXT/JPG/PNG e reimportação PDF. Em Android 15+ também verifica o texto extraído da camada pesquisável do PDF. Testes separados verificam o tratamento de uma imagem inexistente, a persistência após reabrir a base de dados, incluindo atualização/eliminação do índice, e a limpeza das imagens substituídas por edições repetidas e pela eliminação de páginas.
