@@ -47,4 +47,25 @@ public class MetadataTest {
         Document c=d.copy();c.text="FATURA\nOutra Empresa, S.A.\nNIF: 502222222";Metadata.extract(c);
         assertEquals("Empresa Corrigida",c.company);assertEquals("502222222",c.nif);
     }
+    @Test public void readsDatesAsComparableNumbers() {
+        assertEquals(20260925,Metadata.day("25/09/2026",true));
+        assertEquals(20260925,Metadata.day("Data: 25-09-2026",false));
+        assertEquals(20260901,Metadata.day("09/2026",true));
+        assertEquals(20260931,Metadata.day("09/2026",false));
+        assertEquals(20260101,Metadata.day("2026",true));
+        assertEquals(20261231,Metadata.day("2026",false));
+        assertEquals(Metadata.NO_DAY,Metadata.day("",true));
+        assertEquals(Metadata.NO_DAY,Metadata.day("sem data",true));
+    }
+    @Test public void readsAmountsInBothSeparatorStyles() {
+        assertEquals(1970,Metadata.cents("19,70"));
+        assertEquals(1970,Metadata.cents("19.70"));
+        assertEquals(1970,Metadata.cents("19,7"));
+        assertEquals(123456,Metadata.cents("1.234,56"));
+        assertEquals(123456,Metadata.cents("1,234.56"));
+        assertEquals(123400,Metadata.cents("1.234"));
+        assertEquals(500,Metadata.cents("5 €"));
+        assertEquals(Metadata.NO_AMOUNT,Metadata.cents(""));
+        assertEquals(Metadata.NO_AMOUNT,Metadata.cents("sem valor"));
+    }
 }

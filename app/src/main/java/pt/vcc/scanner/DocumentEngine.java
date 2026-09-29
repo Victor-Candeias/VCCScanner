@@ -23,7 +23,7 @@ public class DocumentEngine {
      * Stable keys for the page filters. They are deliberately not the menu labels: the labels live in
      * strings.xml and may be translated, while these identify the operation to apply.
      */
-    public static final String ACTION_ROTATE = "rotate", ACTION_AUTO = "auto", ACTION_ORIGINAL = "original", ACTION_GRAYSCALE = "grayscale", ACTION_MONOCHROME = "monochrome", ACTION_DOCUMENT = "document";
+    public static final String ACTION_ROTATE = "rotate", ACTION_AUTO = "auto", ACTION_ORIGINAL = "original", ACTION_GRAYSCALE = "grayscale", ACTION_MONOCHROME = "monochrome", ACTION_DOCUMENT = "document", ACTION_PHOTO = "photo";
     private final Context context;
     public DocumentEngine(Context context) { this.context = context.getApplicationContext(); }
     public File directory(String id) { File dir = new File(context.getFilesDir(), "documents/" + id); dir.mkdirs(); return dir; }
@@ -134,7 +134,10 @@ public class DocumentEngine {
             } else {
                 result = Bitmap.createBitmap(source.getWidth(), source.getHeight(), Bitmap.Config.ARGB_8888);
                 ColorMatrix matrix = new ColorMatrix();
-                if (!ACTION_ORIGINAL.equals(action)) matrix.setSaturation(0);
+                // Only the colour filters keep the saturation: everything else is a document rendering.
+                if (ACTION_PHOTO.equals(action)) matrix.setSaturation(1.3f);
+                else if (!ACTION_ORIGINAL.equals(action)) matrix.setSaturation(0);
+                if (ACTION_PHOTO.equals(action)) matrix.postConcat(new ColorMatrix(new float[]{1.12f,0,0,0,-12,0,1.12f,0,0,-12,0,0,1.12f,0,-12,0,0,0,1,0}));
                 if (ACTION_DOCUMENT.equals(action)) matrix.postConcat(new ColorMatrix(new float[]{1.45f,0,0,0,-35,0,1.45f,0,0,-35,0,0,1.45f,0,-35,0,0,0,1,0}));
                 Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG); paint.setColorFilter(new ColorMatrixColorFilter(matrix)); new Canvas(result).drawBitmap(source, 0, 0, paint);
                 if (ACTION_MONOCHROME.equals(action)) {

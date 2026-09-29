@@ -32,14 +32,20 @@ public class MainActivity extends ComponentActivity {
     private static final String CATEGORY_ALL = "Todos";
     private static final String[] CATEGORIES = {CATEGORY_ALL, "Faturas", "Recibos", "Contratos", "Manuais", "Pessoais", "Outros"};
     private static final int[] CATEGORY_LABELS = {R.string.category_all, R.string.category_invoices, R.string.category_receipts, R.string.category_contracts, R.string.category_manuals, R.string.category_personal, R.string.category_other};
-    /** Page filters in the order of the R.array.page_actions labels, decoupled from those labels. */
-    private static final String[] PAGE_ACTIONS = {DocumentEngine.ACTION_ROTATE, DocumentEngine.ACTION_AUTO, DocumentEngine.ACTION_ORIGINAL, DocumentEngine.ACTION_GRAYSCALE, DocumentEngine.ACTION_MONOCHROME, DocumentEngine.ACTION_DOCUMENT};
+    /** Page filters in the order of the R.array.page_filters labels, decoupled from those labels. */
+    private static final String[] PAGE_FILTERS = {DocumentEngine.ACTION_ORIGINAL, DocumentEngine.ACTION_AUTO, DocumentEngine.ACTION_DOCUMENT, DocumentEngine.ACTION_MONOCHROME, DocumentEngine.ACTION_GRAYSCALE, DocumentEngine.ACTION_PHOTO};
+    /** Longest side of the list thumbnails, in pixels: enough for the card and cheap to keep around. */
+    private static final int THUMBNAIL_SIZE = 240;
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
+    /** Decoded thumbnails by image path, bounded so a long archive does not grow the heap. */
+    private final Map<String,Bitmap> thumbnails = new LinkedHashMap<>(16,.75f,true){ @Override protected boolean removeEldestEntry(Map.Entry<String,Bitmap> eldest){ return size()>60; } };
     private ScannerDatabase db; private DocumentEngine engine;
     private LinearLayout root, body, results; private TextView status;
     private List<Document> documents = new ArrayList<>(); private Document selected;
     private String category = CATEGORY_ALL, query = "", appendId, restoreId;
-    private String filterCompany="",filterDate="",filterTotal="",filterTags="";
+    private String filterCompany="",filterDateFrom="",filterDateTo="",filterTotalMin="",filterTotalMax="",filterTags="";
+    /** Page open in the inline editor, or -1 when the editor is closed. */
+    private int editing=-1;
     private int searchGeneration;
     private boolean busy; private File exportFile; private String exportMime;
     private ActivityResultLauncher<IntentSenderRequest> scanner;
@@ -49,7 +55,7 @@ public class MainActivity extends ComponentActivity {
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         db = Room.databaseBuilder(getApplicationContext(), ScannerDatabase.class, "vcc-scanner.db").addMigrations(ScannerDatabase.MIGRATION_1_2, ScannerDatabase.MIGRATION_2_3).build(); engine = new DocumentEngine(this);
-        if (state != null) { appendId = state.getString("appendId"); restoreId = state.getString("selectedId"); category = state.getString("category", CATEGORY_ALL); query = state.getString("query", ""); String path=state.getString("export"); if(path!=null) exportFile=new File(path); exportMime=state.getString("mime"); }
+        if (state != null) { appendId = state.getString("appendId"); restoreId = state.getString("selectedId"); editing = state.getInt("editing", -1); category = state.getString("category", CATEGORY_ALL); query = state.getString("query", ""); String path=state.getString("export"); if(path!=null) exportFile=new File(path); exportMime=state.getString("mime"); }
         scanner = registerForActivityResult(new ActivityResultContracts.StartIntentSenderForResult(), result -> {
             if (result.getResultCode() == RESULT_OK) {
                 GmsDocumentScanningResult scan = GmsDocumentScanningResult.fromActivityResultIntent(result.getData());
@@ -63,11 +69,11 @@ public class MainActivity extends ComponentActivity {
                 run(getString(R.string.status_saving_file), () -> { try(InputStream in=new FileInputStream(source); OutputStream out=getContentResolver().openOutputStream(uri)) { if(out==null)throw new IOException(getString(R.string.error_destination_unavailable)); copy(in,out); } }, () -> toast(R.string.toast_file_saved));
             }
         });
-        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) { @Override public void handleOnBackPressed() { if (busy) { toast(R.string.toast_busy); return; } if(selected!=null) { selected=null; home(); } else { setEnabled(false); getOnBackPressedDispatcher().onBackPressed(); setEnabled(true); } } });
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) { @Override public void handleOnBackPressed() { if (busy) { toast(R.string.toast_busy); return; } if(editing>=0) { editing=-1; detail(); } else if(selected!=null) { selected=null; home(); } else { setEnabled(false); getOnBackPressedDispatcher().onBackPressed(); setEnabled(true); } } });
         home(); reload();
     }
     @Override protected void onSaveInstanceState(Bundle state) {
-        super.onSaveInstanceState(state); state.putString("selectedId", selected == null ? null : selected.id); state.putString("appendId", appendId); state.putString("category",category); state.putString("query",query);
+        super.onSaveInstanceState(state); state.putString("selectedId", selected == null ? null : selected.id); state.putString("appendId", appendId); state.putInt("editing", editing); state.putString("category",category); state.putString("query",query);
         if(exportFile!=null)state.putString("export",exportFile.getAbsolutePath()); state.putString("mime",exportMime);
     }
     @Override protected void onDestroy() { super.onDestroy(); worker.shutdown(); }
@@ -97,19 +103,19 @@ public class MainActivity extends ComponentActivity {
         EditText search=input(body,getString(R.string.home_search_hint),query,false);
         button(body,getString(hasFilters()?R.string.home_filters_active:R.string.home_filters_idle),false,this::filters);
         HorizontalScrollView chips=new HorizontalScrollView(this); chips.setHorizontalScrollBarEnabled(false); LinearLayout row=new LinearLayout(this); chips.addView(row); body.addView(chips);
-        for(String cat:CATEGORIES) { boolean current=cat.equals(category); TextView chip=chip(categoryLabel(cat),current); LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-2,-2);lp.setMargins(0,dp(10),dp(6),dp(10));row.addView(chip,lp);chip.setOnClickListener(v->{category=cat;home();}); }
+        for(String cat:CATEGORIES) { boolean current=cat.equals(category); int count=categoryCount(cat); TextView chip=chip(getString(R.string.home_category_chip,categoryLabel(cat),count),categoryLabel(cat),count,current); LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-2,-2);lp.setMargins(0,dp(10),dp(6),dp(10));row.addView(chip,lp);chip.setOnClickListener(v->{category=cat;home();}); }
         LinearLayout summary=new LinearLayout(this); TextView title=heading(getString(R.string.home_documents),19);summary.addView(title,new LinearLayout.LayoutParams(0,-2,1));summary.addView(label(getResources().getQuantityString(R.plurals.home_documents_on_device,documents.size(),documents.size()),12,MUTED));body.addView(summary);
         results=column();body.addView(results);renderResults();
         search.addTextChangedListener(new TextWatcher(){public void beforeTextChanged(CharSequence s,int st,int c,int a){}public void onTextChanged(CharSequence s,int st,int before,int count){query=s.toString();renderResults();}public void afterTextChanged(Editable e){}});
         gap(body,14);body.addView(label(getString(R.string.home_privacy),12,MUTED));
     }
     /** Category filter: a TextView that TalkBack must announce as a selectable button, not as plain text. */
-    private TextView chip(String text,boolean current) {
+    private TextView chip(String text,String name,int count,boolean current) {
         TextView chip=label(text,13,current?Color.WHITE:GREEN);
         chip.setPadding(dp(14),dp(10),dp(14),dp(10)); chip.setBackground(shape(current?GREEN:Color.rgb(231,238,235),20));
         chip.setGravity(Gravity.CENTER); chip.setMinHeight(dp(48)); chip.setMinWidth(dp(48));
         chip.setClickable(true); chip.setFocusable(true);
-        chip.setContentDescription(getString(R.string.cd_category_filter,text));
+        chip.setContentDescription(getResources().getQuantityString(R.plurals.cd_category_filter,count,name,count));
         ViewCompat.setAccessibilityDelegate(chip,new AccessibilityDelegateCompat(){
             @Override public void onInitializeAccessibilityNodeInfo(View host,AccessibilityNodeInfoCompat info){
                 super.onInitializeAccessibilityNodeInfo(host,info);
@@ -129,20 +135,67 @@ public class MainActivity extends ComponentActivity {
     }
     private void renderDocuments(List<Document> found){
         results.removeAllViews(); int count=0; Locale locale=new Locale("pt","PT");
-        for(Document d:found) if((category.equals(CATEGORY_ALL)||category.equals(d.category))&&contains(d.company,filterCompany)&&contains(d.date,filterDate)&&contains(d.total,filterTotal)&&contains(d.tags,filterTags)) {
-            count++;LinearLayout c=card(results);c.addView(label(categoryLabel(d.category).toUpperCase(locale),11,GREEN));c.addView(heading(d.title,18));
+        for(Document d:found) if(matchesFilters(d)) {
+            count++;LinearLayout c=card(results);
+            LinearLayout line=new LinearLayout(this);line.setOrientation(LinearLayout.HORIZONTAL);c.addView(line,new LinearLayout.LayoutParams(-1,-2));
+            ImageView thumb=new ImageView(this);thumb.setScaleType(ImageView.ScaleType.CENTER_CROP);thumb.setBackground(shape(Color.rgb(236,239,241),10));thumb.setClipToOutline(true);thumb.setContentDescription(getString(R.string.cd_document_preview,d.title));
+            LinearLayout.LayoutParams thumbSize=new LinearLayout.LayoutParams(dp(62),dp(80));thumbSize.setMargins(0,dp(4),dp(14),0);line.addView(thumb,thumbSize);thumbnail(d,thumb);
+            LinearLayout text=column();line.addView(text,new LinearLayout.LayoutParams(0,-2,1));
+            text.addView(label(categoryLabel(d.category).toUpperCase(locale),11,GREEN));text.addView(heading(d.title,18));
             int pages=0;try{pages=engine.pages(d).length();}catch(Exception ignored){}
             String date=new java.text.SimpleDateFormat(getString(R.string.card_date_format),locale).format(new Date(d.created));
-            c.addView(label(getString(R.string.card_meta,date,getResources().getQuantityString(R.plurals.page_count,pages,pages)),13,MUTED));
-            if(!d.company.isEmpty()||!d.total.isEmpty())c.addView(label(d.total.isEmpty()?d.company:getString(R.string.card_company_total,d.company,d.total),13,INK));
+            text.addView(label(getString(R.string.card_meta,date,getResources().getQuantityString(R.plurals.page_count,pages,pages)),13,MUTED));
+            if(!d.company.isEmpty()||!d.total.isEmpty())text.addView(label(d.total.isEmpty()?d.company:getString(R.string.card_company_total,d.company,d.total),13,INK));
             c.setContentDescription(getString(R.string.cd_open_document,d.title));c.setOnClickListener(v->{if(!busy){selected=d;detail();}});
         }
         if(count==0){LinearLayout c=card(results);c.addView(heading(getString(documents.isEmpty()?R.string.home_empty_title:R.string.home_no_results_title),20));c.addView(label(getString(documents.isEmpty()?R.string.home_empty_body:R.string.home_no_results_body),15,MUTED));}
     }
+    /** Loads the first page of a document into a list thumbnail, decoding it off the UI thread. */
+    private void thumbnail(Document d,ImageView view){
+        String path;try{JSONArray pages=engine.pages(d);if(pages.length()==0)return;path=pages.getJSONObject(0).getString("path");}catch(Exception unreadable){return;}
+        Bitmap cached=thumbnails.get(path);
+        if(cached!=null){view.setImageBitmap(cached);return;}
+        view.setTag(path);
+        worker.execute(()->{
+            BitmapFactory.Options bounds=new BitmapFactory.Options();bounds.inJustDecodeBounds=true;BitmapFactory.decodeFile(path,bounds);
+            BitmapFactory.Options options=new BitmapFactory.Options();
+            for(options.inSampleSize=1;Math.max(bounds.outWidth,bounds.outHeight)/options.inSampleSize>THUMBNAIL_SIZE*2;options.inSampleSize*=2);
+            Bitmap decoded=BitmapFactory.decodeFile(path,options);
+            if(decoded==null)return;
+            runOnUiThread(()->{if(isDestroyed())return;thumbnails.put(path,decoded);if(path.equals(view.getTag()))view.setImageBitmap(decoded);});
+        });
+    }
+    private int categoryCount(String value){int n=0;for(Document d:documents)if(value.equals(CATEGORY_ALL)||value.equals(d.category))n++;return n;}
+    private boolean matchesFilters(Document d){
+        return (category.equals(CATEGORY_ALL)||category.equals(d.category))&&contains(d.company,filterCompany)&&contains(d.tags,filterTags)&&withinDates(d.date)&&withinTotals(d.total);
+    }
+    /** A document without a readable date or total is outside any range asked for that field. */
+    private boolean withinDates(String value){
+        int from=Metadata.day(filterDateFrom,true),to=Metadata.day(filterDateTo,false);
+        if(from==Metadata.NO_DAY&&to==Metadata.NO_DAY)return true;
+        int day=Metadata.day(value,true);
+        return day!=Metadata.NO_DAY&&(from==Metadata.NO_DAY||day>=from)&&(to==Metadata.NO_DAY||day<=to);
+    }
+    private boolean withinTotals(String value){
+        long min=Metadata.cents(filterTotalMin),max=Metadata.cents(filterTotalMax);
+        if(min==Metadata.NO_AMOUNT&&max==Metadata.NO_AMOUNT)return true;
+        long total=Metadata.cents(value);
+        return total!=Metadata.NO_AMOUNT&&(min==Metadata.NO_AMOUNT||total>=min)&&(max==Metadata.NO_AMOUNT||total<=max);
+    }
     private boolean contains(String value,String filter){return Metadata.normalize(value).contains(Metadata.normalize(filter));}
-    private boolean hasFilters(){return !(filterCompany+filterDate+filterTotal+filterTags).isEmpty();}
-    private void filters(){LinearLayout content=column();content.setPadding(dp(18),dp(8),dp(18),dp(8));EditText company=input(content,getString(R.string.filters_company),filterCompany,false),date=input(content,getString(R.string.filters_date),filterDate,false),total=input(content,getString(R.string.filters_total),filterTotal,false),tags=input(content,getString(R.string.filters_tag),filterTags,false);new AlertDialog.Builder(this).setTitle(R.string.filters_title).setView(content).setNegativeButton(R.string.action_cancel,null).setNeutralButton(R.string.action_clear,(a,b)->{filterCompany="";filterDate="";filterTotal="";filterTags="";home();}).setPositiveButton(R.string.action_apply,(a,b)->{filterCompany=company.getText().toString().trim();filterDate=date.getText().toString().trim();filterTotal=total.getText().toString().trim();filterTags=tags.getText().toString().trim();home();}).show();}
-    private void reload(){run(getString(R.string.status_loading_documents),()->documents=db.documents().all(),()->{if(restoreId!=null){for(Document d:documents)if(d.id.equals(restoreId))selected=d;restoreId=null;}if(selected==null)home();else detail();});}
+    private boolean hasFilters(){return !(filterCompany+filterDateFrom+filterDateTo+filterTotalMin+filterTotalMax+filterTags).isEmpty()||!category.equals(CATEGORY_ALL);}
+    private void filters(){
+        LinearLayout content=column();content.setPadding(dp(18),dp(8),dp(18),dp(8));ScrollView scroll=new ScrollView(this);scroll.addView(content);
+        content.addView(label(getString(R.string.filters_type),12,MUTED));
+        Spinner types=new Spinner(this);String[] labels=new String[CATEGORIES.length];for(int i=0;i<CATEGORIES.length;i++)labels[i]=categoryLabel(CATEGORIES[i]);
+        types.setAdapter(new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,labels));types.setSelection(Math.max(0,Arrays.asList(CATEGORIES).indexOf(category)));types.setContentDescription(getString(R.string.filters_type));content.addView(types);
+        EditText company=input(content,getString(R.string.filters_company),filterCompany,false),from=input(content,getString(R.string.filters_date_from),filterDateFrom,false),to=input(content,getString(R.string.filters_date_to),filterDateTo,false),min=input(content,getString(R.string.filters_total_min),filterTotalMin,false),max=input(content,getString(R.string.filters_total_max),filterTotalMax,false),tags=input(content,getString(R.string.filters_tag),filterTags,false);
+        content.addView(label(getString(R.string.filters_range_note),12,MUTED));
+        new AlertDialog.Builder(this).setTitle(R.string.filters_title).setView(scroll).setNegativeButton(R.string.action_cancel,null)
+            .setNeutralButton(R.string.action_clear,(a,b)->{category=CATEGORY_ALL;filterCompany="";filterDateFrom="";filterDateTo="";filterTotalMin="";filterTotalMax="";filterTags="";home();})
+            .setPositiveButton(R.string.action_apply,(a,b)->{category=CATEGORIES[types.getSelectedItemPosition()];filterCompany=company.getText().toString().trim();filterDateFrom=from.getText().toString().trim();filterDateTo=to.getText().toString().trim();filterTotalMin=min.getText().toString().trim();filterTotalMax=max.getText().toString().trim();filterTags=tags.getText().toString().trim();home();}).show();
+    }
+    private void reload(){run(getString(R.string.status_loading_documents),()->documents=db.documents().all(),()->{if(restoreId!=null){for(Document d:documents)if(d.id.equals(restoreId))selected=d;restoreId=null;}if(selected==null)home();else if(editing>=0)pageEditor(editing);else detail();});}
     private void newDocument(boolean append) {
         appendId=append&&selected!=null?selected.id:null;
         new AlertDialog.Builder(this).setTitle(append?R.string.new_document_append_title:R.string.new_document_title).setItems(R.array.new_document_sources,(dialog,which)->{
@@ -164,44 +217,134 @@ public class MainActivity extends ComponentActivity {
         },this::detail);
     }
     private void detail() {
+        editing=-1;
         if(selected==null){home();return;} Document d=selected;
         layout(getString(R.string.detail_eyebrow),d.title,getString(R.string.detail_subtitle,categoryLabel(d.category)));button(body,getString(R.string.detail_back),false,()->{selected=null;home();});
         LinearLayout actions=card(body);button(actions,getString(R.string.detail_export),true,this::exportMenu);button(actions,getString(R.string.detail_edit_metadata),false,this::editMetadata);
         body.addView(heading(getString(R.string.detail_pages),21));
+        body.addView(label(getString(R.string.detail_reorder_hint),12,MUTED));
         try {JSONArray pages=engine.pages(d);for(int i=0;i<pages.length();i++){
             int index=i;JSONObject item=pages.getJSONObject(i);LinearLayout c=card(body);c.addView(heading(getString(R.string.page_title,i+1),16));
             ImageView thumb=new ImageView(this);thumb.setAdjustViewBounds(true);thumb.setScaleType(ImageView.ScaleType.FIT_CENTER);thumb.setBackground(shape(Color.rgb(236,239,241),10));thumb.setContentDescription(getString(R.string.cd_page_preview,i+1));
             BitmapFactory.Options opts=new BitmapFactory.Options();opts.inSampleSize=4;thumb.setImageBitmap(BitmapFactory.decodeFile(item.getString("path"),opts));c.addView(thumb,new LinearLayout.LayoutParams(-1,dp(235)));
-            button(c,getString(R.string.detail_crop),false,()->cropPage(index));
-            button(c,getString(R.string.detail_adjust),false,()->pageMenu(index));
+            button(c,getString(R.string.detail_adjust),false,()->pageEditor(index));
+            reorderable(c,index);
         }}catch(Exception e){error(R.string.error_pages_unreadable);}
         button(body,getString(R.string.detail_add_pages),false,()->newDocument(true));
         LinearLayout metadata=card(body);metadata.addView(heading(getString(R.string.detail_metadata_title),19));metadata.addView(label(getString(R.string.detail_metadata_note),12,MUTED));
         metadata.addView(label(getString(R.string.detail_metadata_body,empty(d.company),empty(d.nif),empty(d.date),empty(d.total),empty(d.tags)),14,INK));
-        LinearLayout ocr=card(body);ocr.addView(heading(getString(R.string.detail_ocr_title),19));ocr.addView(label(getString(R.string.detail_language,d.language.equals("und")?getString(R.string.detail_language_unknown):d.language),12,MUTED));TextView text=label(d.text.isEmpty()?getString(R.string.detail_no_text):d.text,14,INK);text.setTextIsSelectable(true);ocr.addView(text);
+        LinearLayout ocr=card(body);ocr.addView(heading(getString(R.string.detail_ocr_title),19));ocr.addView(label(getString(R.string.detail_language,d.language.equals("und")?getString(R.string.detail_language_unknown):d.language),12,MUTED));
+        EditText find=input(ocr,getString(R.string.detail_search_hint),"",false);TextView matches=label("",12,GREEN);ocr.addView(matches);
+        TextView text=label(d.text.isEmpty()?getString(R.string.detail_no_text):d.text,14,INK);text.setTextIsSelectable(true);ocr.addView(text);
+        find.addTextChangedListener(new TextWatcher(){public void beforeTextChanged(CharSequence s,int st,int c,int a){}public void onTextChanged(CharSequence s,int st,int before,int count){
+            if(d.text.isEmpty())return;String term=s.toString().trim();int hits=highlight(text,d.text,term);
+            matches.setText(term.isEmpty()?"":hits==0?getString(R.string.detail_search_none):getResources().getQuantityString(R.plurals.detail_search_matches,hits,hits));
+        }public void afterTextChanged(Editable e){}});
         button(ocr,getString(R.string.detail_copy_text),false,()->{((android.content.ClipboardManager)getSystemService(CLIPBOARD_SERVICE)).setPrimaryClip(ClipData.newPlainText(d.title,d.text));toast(R.string.toast_text_copied);});
         if(!d.barcodes.isEmpty()){ocr.addView(heading(getString(R.string.detail_barcodes),16));TextView codes=label(d.barcodes,14,INK);codes.setTextIsSelectable(true);ocr.addView(codes);}
         button(body,getString(R.string.detail_delete),false,()->new AlertDialog.Builder(this).setTitle(R.string.detail_delete_title).setMessage(R.string.detail_delete_message).setNegativeButton(R.string.action_cancel,null).setPositiveButton(R.string.action_delete,(a,b)->run(getString(R.string.status_deleting),()->{db.documents().delete(d);engine.deleteFiles(d);documents=db.documents().all();selected=null;},this::home)).show());
     }
     private String empty(String s){return s.isEmpty()?getString(R.string.value_empty):s;}
+    /** Highlights every occurrence of the term, ignoring accents and case, and returns how many there are. */
+    private int highlight(TextView view,String content,String term){
+        if(term.isEmpty()){view.setText(content);return 0;}
+        String haystack=fold(content),needle=fold(term);
+        Spannable spanned=new SpannableString(content);int hits=0;
+        for(int at=haystack.indexOf(needle);at>=0;at=haystack.indexOf(needle,at+needle.length())){
+            spanned.setSpan(new android.text.style.BackgroundColorSpan(Color.rgb(255,232,150)),at,at+needle.length(),Spannable.SPAN_EXCLUSIVE_EXCLUSIVE);hits++;
+        }
+        view.setText(spanned);return hits;
+    }
+    /** Accent and case folding that keeps one character per character, so the offsets still match. */
+    private String fold(String value){
+        StringBuilder folded=new StringBuilder(value.length());
+        for(int i=0;i<value.length();i++){String single=Metadata.normalize(String.valueOf(value.charAt(i)));folded.append(single.isEmpty()?value.charAt(i):single.charAt(0));}
+        return folded.toString();
+    }
+    /** Long press and drag a page card over another to put it in that position. */
+    private void reorderable(LinearLayout card,int index){
+        card.setContentDescription(getString(R.string.cd_reorder_page,index+1));
+        card.setOnLongClickListener(v->{if(busy){toast(R.string.toast_busy);return true;}v.startDragAndDrop(ClipData.newPlainText("page",String.valueOf(index)),new View.DragShadowBuilder(v),null,0);return true;});
+        card.setOnDragListener((v,event)->{
+            switch(event.getAction()){
+                case DragEvent.ACTION_DRAG_STARTED: return event.getClipDescription()!=null;
+                case DragEvent.ACTION_DRAG_ENTERED: v.setAlpha(.55f); return true;
+                case DragEvent.ACTION_DRAG_EXITED: case DragEvent.ACTION_DRAG_ENDED: v.setAlpha(1f); return true;
+                case DragEvent.ACTION_DROP:
+                    v.setAlpha(1f);
+                    if(event.getClipData()==null||event.getClipData().getItemCount()==0)return false;
+                    try{int from=Integer.parseInt(event.getClipData().getItemAt(0).getText().toString());if(from!=index)movePage(from,index);}catch(NumberFormatException ignored){}
+                    return true;
+                default: return true;
+            }
+        });
+    }
+    private void movePage(int from,int to){
+        Document d=selected.copy();
+        run(getString(R.string.status_updating_page),()->{
+            JSONArray pages=engine.pages(d);
+            if(from<0||to<0||from>=pages.length()||to>=pages.length())return;
+            List<Object> items=new ArrayList<>();for(int i=0;i<pages.length();i++)items.add(pages.get(i));
+            items.add(to,items.remove(from));
+            JSONArray next=new JSONArray();for(Object item:items)next.put(item);
+            d.pages=next.toString();engine.rebuild(d);db.documents().save(d);engine.sweep(d);selected=d;documents=db.documents().all();
+        },this::detail);
+    }
+    /** Inline editor of a single page: rotate, crop, filter strip and position, as in the flow diagram. */
+    private void pageEditor(int index){
+        if(selected==null){home();return;}
+        editing=index;Document d=selected;
+        layout(getString(R.string.editor_eyebrow),getString(R.string.page_title,index+1),getString(R.string.editor_subtitle));
+        button(body,getString(R.string.editor_done),true,this::detail);
+        try {
+            JSONArray pages=engine.pages(d);
+            if(index<0||index>=pages.length()){detail();return;}
+            LinearLayout preview=card(body);
+            ImageView page=new ImageView(this);page.setAdjustViewBounds(true);page.setScaleType(ImageView.ScaleType.FIT_CENTER);page.setBackground(shape(Color.rgb(236,239,241),10));page.setContentDescription(getString(R.string.cd_page_preview,index+1));
+            BitmapFactory.Options options=new BitmapFactory.Options();options.inSampleSize=2;page.setImageBitmap(BitmapFactory.decodeFile(pages.getJSONObject(index).getString("path"),options));
+            preview.addView(page,new LinearLayout.LayoutParams(-1,dp(360)));
+            LinearLayout actions=new LinearLayout(this);actions.setOrientation(LinearLayout.HORIZONTAL);preview.addView(actions,new LinearLayout.LayoutParams(-1,-2));
+            action(actions,getString(R.string.editor_rotate),()->applyFilter(index,DocumentEngine.ACTION_ROTATE));
+            action(actions,getString(R.string.editor_crop),()->cropPage(index));
+            LinearLayout strip=card(body);strip.addView(heading(getString(R.string.editor_filters),16));
+            HorizontalScrollView scroll=new HorizontalScrollView(this);scroll.setHorizontalScrollBarEnabled(false);LinearLayout row=new LinearLayout(this);scroll.addView(row);strip.addView(scroll);
+            String[] labels=getResources().getStringArray(R.array.page_filters);
+            for(int i=0;i<labels.length;i++){
+                String action=PAGE_FILTERS[i],text=labels[i];
+                TextView filter=label(text,13,GREEN);filter.setPadding(dp(14),dp(10),dp(14),dp(10));filter.setBackground(shape(Color.rgb(231,238,235),20));filter.setGravity(Gravity.CENTER);filter.setMinHeight(dp(48));filter.setMinWidth(dp(48));filter.setClickable(true);filter.setFocusable(true);
+                filter.setContentDescription(getString(R.string.cd_page_filter,text));
+                ViewCompat.setAccessibilityDelegate(filter,new AccessibilityDelegateCompat(){@Override public void onInitializeAccessibilityNodeInfo(View host,AccessibilityNodeInfoCompat info){super.onInitializeAccessibilityNodeInfo(host,info);info.setClassName(Button.class.getName());}});
+                filter.setOnClickListener(v->{if(!busy)applyFilter(index,action);else toast(R.string.toast_busy);});
+                LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-2,-2);lp.setMargins(0,dp(8),dp(6),dp(4));row.addView(filter,lp);
+            }
+            LinearLayout order=card(body);order.addView(heading(getString(R.string.editor_order),16));
+            if(index>0)button(order,getString(R.string.editor_move_up),false,()->movePage(index,index-1));
+            if(index<pages.length()-1)button(order,getString(R.string.editor_move_down),false,()->movePage(index,index+1));
+            button(order,getString(R.string.editor_delete),false,()->new AlertDialog.Builder(this).setTitle(R.string.page_delete_title).setNegativeButton(R.string.action_cancel,null).setPositiveButton(R.string.action_delete,(a,b)->deletePage(index)).show());
+        } catch(Exception e){error(R.string.error_pages_unreadable);}
+    }
+    /** Small side by side button, for the actions that sit on top of the page preview. */
+    private void action(LinearLayout parent,String text,Runnable task){
+        Button b=button(parent,text,false,task);
+        LinearLayout.LayoutParams lp=(LinearLayout.LayoutParams)b.getLayoutParams();lp.width=0;lp.weight=1;lp.setMargins(0,dp(5),dp(6),dp(5));b.setLayoutParams(lp);
+    }
+    private void applyFilter(int index,String action){
+        Document d=selected.copy();
+        run(getString(R.string.status_updating_page),()->{engine.edit(d,index,action);db.documents().save(d);engine.sweep(d);selected=d;documents=db.documents().all();},()->pageEditor(index));
+    }
+    private void deletePage(int index){
+        Document d=selected.copy();
+        run(getString(R.string.status_updating_page),()->{
+            JSONArray pages=engine.pages(d);
+            if(pages.length()==1)throw new IOException(getString(R.string.error_last_page));
+            pages.remove(index);d.pages=pages.toString();engine.rebuild(d);db.documents().save(d);engine.sweep(d);selected=d;documents=db.documents().all();
+        },this::detail);
+    }
     private void cropPage(int index){
         try{Document d=selected.copy();BitmapFactory.Options options=new BitmapFactory.Options();options.inSampleSize=2;Bitmap preview=BitmapFactory.decodeFile(engine.pages(d).getJSONObject(index).getString("path"),options);if(preview==null)throw new IOException(getString(R.string.error_image_unavailable));CropView view=new CropView(this,preview);float[] detected=ImageProcessor.detect(preview);view.setCorners(detected);LinearLayout content=column();content.setPadding(dp(12),dp(8),dp(12),0);content.addView(label(getString(detected!=null?R.string.crop_hint_auto:R.string.crop_hint),14,MUTED));content.addView(view,new LinearLayout.LayoutParams(-1,dp(380)));
-            AlertDialog dialog=new AlertDialog.Builder(this).setTitle(R.string.crop_title).setView(content).setNegativeButton(R.string.action_cancel,null).setPositiveButton(R.string.action_apply,(a,b)->{float[] corners=view.corners();run(getString(R.string.status_cropping),()->{engine.crop(d,index,corners);db.documents().save(d);engine.sweep(d);selected=d;documents=db.documents().all();},this::detail);}).create();dialog.setOnDismissListener(v->preview.recycle());dialog.show();
+            AlertDialog dialog=new AlertDialog.Builder(this).setTitle(R.string.crop_title).setView(content).setNegativeButton(R.string.action_cancel,null).setPositiveButton(R.string.action_apply,(a,b)->{float[] corners=view.corners();run(getString(R.string.status_cropping),()->{engine.crop(d,index,corners);db.documents().save(d);engine.sweep(d);selected=d;documents=db.documents().all();},()->pageEditor(index));}).create();dialog.setOnDismissListener(v->preview.recycle());dialog.show();
         }catch(Exception e){error(e.getLocalizedMessage());}
     }
-    private void pageMenu(int index){
-        new AlertDialog.Builder(this).setTitle(getString(R.string.page_title,index+1)).setItems(R.array.page_actions,(dialog,which)->{
-            Document d=selected.copy();
-            if(which==8){new AlertDialog.Builder(this).setTitle(R.string.page_delete_title).setNegativeButton(R.string.action_cancel,null).setPositiveButton(R.string.action_delete,(a,b)->changePage(d,index,which)).show();}else changePage(d,index,which);
-        }).setNegativeButton(R.string.action_close,null).show();
-    }
-    private void changePage(Document d,int index,int which){run(getString(R.string.status_updating_page),()->{
-        JSONArray pages=engine.pages(d);
-        if(which<=5)engine.edit(d,index,PAGE_ACTIONS[which]);
-        else if(which==8){if(pages.length()==1)throw new IOException(getString(R.string.error_last_page));pages.remove(index);d.pages=pages.toString();engine.rebuild(d);}
-        else{int dest=index+(which==6?-1:1);if(dest<0||dest>=pages.length())return;Object old=pages.get(index);pages.put(index,pages.get(dest));pages.put(dest,old);d.pages=pages.toString();engine.rebuild(d);}
-        db.documents().save(d);engine.sweep(d);selected=d;documents=db.documents().all();
-    },this::detail);}
     private void editMetadata(){
         Document d=selected;LinearLayout content=column();content.setPadding(dp(18),dp(6),dp(18),dp(6));ScrollView scroll=new ScrollView(this);scroll.addView(content);
         content.addView(label(getString(R.string.field_name),12,MUTED));EditText title=input(content,getString(R.string.field_name),d.title,false);

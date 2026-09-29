@@ -30,7 +30,8 @@
     <string name="home_new_scan">"＋  Nova digitalização"</string>
     <string name="home_search_hint">Pesquisar texto, NIF, empresa…</string>
     <string name="home_filters_active">"Filtros ativos  ·  Alterar"</string>
-    <string name="home_filters_idle">Filtrar por data, empresa, valor ou etiquetas</string>
+    <string name="home_filters_idle">Filtrar por data, tipo, empresa, valor ou etiquetas</string>
+    <string name="home_category_chip">%1$s · %2$d</string>
     <string name="home_documents">Documentos</string>
     <plurals name="home_documents_on_device">
         <item quantity="one">%d no dispositivo</item>
@@ -53,9 +54,13 @@
 
     <!-- Filters -->
     <string name="filters_title">Filtrar documentos</string>
+    <string name="filters_type">Tipo</string>
     <string name="filters_company">Empresa</string>
-    <string name="filters_date">Data (ex.: 09/2026)</string>
-    <string name="filters_total">Valor (ex.: 19,70)</string>
+    <string name="filters_date_from">Data de (ex.: 01/09/2026)</string>
+    <string name="filters_date_to">Data até (ex.: 30/09/2026)</string>
+    <string name="filters_total_min">Valor mínimo (ex.: 10,00)</string>
+    <string name="filters_total_max">Valor máximo (ex.: 50,00)</string>
+    <string name="filters_range_note">Datas e valores aceitam intervalos. Deixe em branco para não limitar. Uma data pode ser um dia, um mês (09/2026) ou um ano.</string>
     <string name="filters_tag">Etiqueta</string>
 
     <!-- New document -->
@@ -75,8 +80,8 @@
     <string name="detail_export">Guardar / Exportar</string>
     <string name="detail_edit_metadata">Editar nome e dados</string>
     <string name="detail_pages">Páginas</string>
-    <string name="detail_crop">Recortar / corrigir perspetiva</string>
-    <string name="detail_adjust">"Ajustar página  ·  Rodar / Filtros / Ordem"</string>
+    <string name="detail_adjust">"Ajustar página  ·  Rodar / Recortar / Filtros"</string>
+    <string name="detail_reorder_hint">Mantenha uma página premida e arraste-a para mudar a ordem.</string>
     <string name="detail_add_pages">"＋  Adicionar páginas"</string>
     <string name="detail_metadata_title">Dados do documento</string>
     <string name="detail_metadata_note">Extração automática — confirme os valores antes de os utilizar.</string>
@@ -86,6 +91,12 @@
     <string name="detail_language_unknown">não identificado</string>
     <string name="detail_no_text">Não foi encontrado texto nesta imagem.</string>
     <string name="detail_copy_text">Copiar texto</string>
+    <string name="detail_search_hint">Pesquisar dentro do documento…</string>
+    <plurals name="detail_search_matches">
+        <item quantity="one">%1$d ocorrência</item>
+        <item quantity="other">%1$d ocorrências</item>
+    </plurals>
+    <string name="detail_search_none">Sem ocorrências neste documento.</string>
     <string name="detail_barcodes">QR / códigos de barras</string>
     <string name="detail_delete">Eliminar documento</string>
     <string name="detail_delete_title">Eliminar documento?</string>
@@ -94,16 +105,25 @@
     <!-- Pages -->
     <string name="page_title">Página %1$d</string>
     <string name="page_delete_title">Eliminar esta página?</string>
-    <string-array name="page_actions">
-        <item>Rodar</item>
-        <item>Automático (recomendado)</item>
+
+    <!-- Page editor -->
+    <string name="editor_eyebrow">"VCC  /  AJUSTE E EDIÇÃO"</string>
+    <string name="editor_subtitle">Rode, recorte e escolha o filtro. Cada alteração volta a ler o texto.</string>
+    <string name="editor_rotate">Rodar</string>
+    <string name="editor_crop">Recortar</string>
+    <string name="editor_done">Confirmar</string>
+    <string name="editor_filters">Filtros</string>
+    <string name="editor_order">Ordem da página</string>
+    <string name="editor_move_up">"↑  Mover para cima"</string>
+    <string name="editor_move_down">"↓  Mover para baixo"</string>
+    <string name="editor_delete">Eliminar página</string>
+    <string-array name="page_filters">
         <item>Original</item>
-        <item>Escala de cinzentos</item>
-        <item>Preto e branco</item>
+        <item>Automático</item>
         <item>Documento</item>
-        <item>Mover para cima</item>
-        <item>Mover para baixo</item>
-        <item>Eliminar página</item>
+        <item>Preto e branco</item>
+        <item>Escala de cinzentos</item>
+        <item>Foto</item>
     </string-array>
 
     <!-- Crop -->
@@ -178,8 +198,14 @@
 
     <!-- Accessibility -->
     <string name="cd_open_document">Abrir %1$s</string>
+    <string name="cd_document_preview">Primeira página de %1$s</string>
     <string name="cd_page_preview">Pré-visualização da página %1$d</string>
     <string name="cd_crop_view">Recorte: arraste os quatro cantos até aos limites do documento</string>
-    <string name="cd_category_filter">Categoria %1$s</string>
+    <plurals name="cd_category_filter">
+        <item quantity="one">Categoria %1$s, %2$d documento</item>
+        <item quantity="other">Categoria %1$s, %2$d documentos</item>
+    </plurals>
     <string name="cd_document_category">Categoria do documento</string>
+    <string name="cd_page_filter">Filtro %1$s</string>
+    <string name="cd_reorder_page">Página %1$d. Mantenha premido e arraste para mudar a ordem.</string>
 </resources>
