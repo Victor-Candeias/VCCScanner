@@ -96,6 +96,7 @@
     <string name="page_delete_title">Eliminar esta página?</string>
     <string-array name="page_actions">
         <item>Rodar</item>
+        <item>Automático (recomendado)</item>
         <item>Original</item>
         <item>Escala de cinzentos</item>
         <item>Preto e branco</item>
@@ -108,6 +109,7 @@
     <!-- Crop -->
     <string name="crop_title">Ajustar recorte</string>
     <string name="crop_hint">Arraste os quatro cantos até ao limite do documento.</string>
+    <string name="crop_hint_auto">Os limites do documento foram detetados automaticamente. Arraste os cantos se precisar de os corrigir.</string>
 
     <!-- Edit metadata -->
     <string name="edit_title">Editar documento</string>

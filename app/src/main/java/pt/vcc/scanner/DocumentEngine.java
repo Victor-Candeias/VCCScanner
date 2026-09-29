@@ -23,7 +23,7 @@ public class DocumentEngine {
      * Stable keys for the page filters. They are deliberately not the menu labels: the labels live in
      * strings.xml and may be translated, while these identify the operation to apply.
      */
-    public static final String ACTION_ROTATE = "rotate", ACTION_ORIGINAL = "original", ACTION_GRAYSCALE = "grayscale", ACTION_MONOCHROME = "monochrome", ACTION_DOCUMENT = "document";
+    public static final String ACTION_ROTATE = "rotate", ACTION_AUTO = "auto", ACTION_ORIGINAL = "original", ACTION_GRAYSCALE = "grayscale", ACTION_MONOCHROME = "monochrome", ACTION_DOCUMENT = "document";
     private final Context context;
     public DocumentEngine(Context context) { this.context = context.getApplicationContext(); }
     public File directory(String id) { File dir = new File(context.getFilesDir(), "documents/" + id); dir.mkdirs(); return dir; }
@@ -75,10 +75,24 @@ public class DocumentEngine {
             d.pages = list.toString(); rebuild(d);
         } catch (Exception e) { for (File file : added) file.delete(); throw e; }
     }
+    /**
+     * Stores a page, correcting it first when it looks like a photo: contours are detected, the
+     * perspective is flattened and the illumination is normalized. When that happens the untouched
+     * image is kept as the original, so the "Original" filter still undoes everything.
+     */
     private void add(Document d, JSONArray list, Bitmap b, List<File> added) throws Exception {
-        File f = new File(directory(d.id), UUID.randomUUID()+".jpg"); added.add(f);
-        try (OutputStream out = new FileOutputStream(f)) { if (!b.compress(Bitmap.CompressFormat.JPEG, 92, out)) throw new IOException(context.getString(R.string.engine_error_image_save)); }
-        JSONObject page = recognize(b); page.put("path", f.getAbsolutePath()); page.put("original", f.getAbsolutePath()); list.put(page);
+        Bitmap processed = ImageProcessor.process(b);
+        try {
+            Bitmap page = processed != null ? processed : b;
+            File f = new File(directory(d.id), UUID.randomUUID()+".jpg"); added.add(f);
+            write(f, page, 92);
+            String original = f.getAbsolutePath();
+            if (processed != null) { File raw = new File(directory(d.id), UUID.randomUUID()+".jpg"); added.add(raw); write(raw, b, 92); original = raw.getAbsolutePath(); }
+            JSONObject item = recognize(page); item.put("path", f.getAbsolutePath()); item.put("original", original); list.put(item);
+        } finally { if (processed != null) processed.recycle(); }
+    }
+    private void write(File file, Bitmap b, int quality) throws IOException {
+        try (OutputStream out = new FileOutputStream(file)) { if (!b.compress(Bitmap.CompressFormat.JPEG, quality, out)) throw new IOException(context.getString(R.string.engine_error_image_save)); }
     }
     private JSONObject recognize(Bitmap b) throws Exception {
         JSONObject page = new JSONObject(); JSONArray lines = new JSONArray();
@@ -115,6 +129,8 @@ public class DocumentEngine {
         try {
             if (ACTION_ROTATE.equals(action)) {
                 Matrix m = new Matrix(); m.postRotate(90); result = Bitmap.createBitmap(source, 0, 0, source.getWidth(), source.getHeight(), m, true);
+            } else if (ACTION_AUTO.equals(action)) {
+                result = ImageProcessor.enhance(source);
             } else {
                 result = Bitmap.createBitmap(source.getWidth(), source.getHeight(), Bitmap.Config.ARGB_8888);
                 ColorMatrix matrix = new ColorMatrix();
@@ -127,7 +143,7 @@ public class DocumentEngine {
                 }
             }
             JSONObject next = recognize(result); File f = new File(directory(d.id), UUID.randomUUID()+".jpg");
-            try (OutputStream out = new FileOutputStream(f)) { result.compress(Bitmap.CompressFormat.JPEG, 94, out); }
+            write(f, result, 94);
             next.put("path", f.getAbsolutePath()).put("original", old.getString("original")); list.put(index, next); d.pages = list.toString(); rebuild(d);
         } finally { source.recycle(); if (result != null && result != source) result.recycle(); }
     }
@@ -140,15 +156,11 @@ public class DocumentEngine {
         }
         JSONArray list=pages(d);JSONObject old=list.getJSONObject(index);Bitmap source=bitmap(old.getString("path"));Bitmap result=null;
         try {
-            float[] src=corners.clone();for(int i=0;i<4;i++){src[i*2]*=source.getWidth();src[i*2+1]*=source.getHeight();}
-            int w=Math.max(1,Math.round(Math.max(distance(src,0,1),distance(src,3,2))));int h=Math.max(1,Math.round(Math.max(distance(src,0,3),distance(src,1,2))));
-            float[] dest={0,0,w,0,w,h,0,h};Matrix matrix=new Matrix();if(!matrix.setPolyToPoly(src,0,dest,0,4))throw new IOException(context.getString(R.string.engine_error_invalid_crop));
-            result=Bitmap.createBitmap(w,h,Bitmap.Config.ARGB_8888);result.eraseColor(Color.WHITE);new Canvas(result).drawBitmap(source,matrix,new Paint(Paint.FILTER_BITMAP_FLAG));
-            JSONObject next=recognize(result);File file=new File(directory(d.id),UUID.randomUUID()+".jpg");try(OutputStream out=new FileOutputStream(file)){result.compress(Bitmap.CompressFormat.JPEG,94,out);}
+            result=ImageProcessor.warp(source,corners);if(result==null)throw new IOException(context.getString(R.string.engine_error_invalid_crop));
+            JSONObject next=recognize(result);File file=new File(directory(d.id),UUID.randomUUID()+".jpg");write(file,result,94);
             next.put("path",file.getAbsolutePath()).put("original",old.getString("original"));list.put(index,next);d.pages=list.toString();rebuild(d);
         }finally{source.recycle();if(result!=null)result.recycle();}
     }
-    private float distance(float[] p,int a,int b){return (float)Math.hypot(p[a*2]-p[b*2],p[a*2+1]-p[b*2+1]);}
     public File export(Document d, String type) throws Exception {
         File dir = new File(context.getCacheDir(), "exports"); dir.mkdirs();
         String name = d.title.replaceAll("[^\\p{L}\\p{N} ._-]", "_"); if (name.trim().isEmpty()) name = context.getString(R.string.engine_export_fallback_name);

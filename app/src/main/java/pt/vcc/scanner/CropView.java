@@ -22,6 +22,8 @@ public class CropView extends View {
     private void describe(){setContentDescription(getContext().getString(R.string.cd_crop_view));}
     /** Sets the page to crop and resets the handles to the default inset. */
     public void setBitmap(Bitmap value){bitmap=value;System.arraycopy(DEFAULT_CORNERS,0,points,0,points.length);invalidate();}
+    /** Places the handles on the given normalized corners, clockwise from the top left. */
+    public void setCorners(float[] value){if(value==null||value.length!=points.length)return;System.arraycopy(value,0,points,0,points.length);invalidate();}
     public float[] corners(){return points.clone();}
     @Override protected void onDraw(Canvas canvas){
         super.onDraw(canvas);

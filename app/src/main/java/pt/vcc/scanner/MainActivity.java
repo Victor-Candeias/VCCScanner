@@ -33,7 +33,7 @@ public class MainActivity extends ComponentActivity {
     private static final String[] CATEGORIES = {CATEGORY_ALL, "Faturas", "Recibos", "Contratos", "Manuais", "Pessoais", "Outros"};
     private static final int[] CATEGORY_LABELS = {R.string.category_all, R.string.category_invoices, R.string.category_receipts, R.string.category_contracts, R.string.category_manuals, R.string.category_personal, R.string.category_other};
     /** Page filters in the order of the R.array.page_actions labels, decoupled from those labels. */
-    private static final String[] PAGE_ACTIONS = {DocumentEngine.ACTION_ROTATE, DocumentEngine.ACTION_ORIGINAL, DocumentEngine.ACTION_GRAYSCALE, DocumentEngine.ACTION_MONOCHROME, DocumentEngine.ACTION_DOCUMENT};
+    private static final String[] PAGE_ACTIONS = {DocumentEngine.ACTION_ROTATE, DocumentEngine.ACTION_AUTO, DocumentEngine.ACTION_ORIGINAL, DocumentEngine.ACTION_GRAYSCALE, DocumentEngine.ACTION_MONOCHROME, DocumentEngine.ACTION_DOCUMENT};
     private final ExecutorService worker = Executors.newSingleThreadExecutor();
     private ScannerDatabase db; private DocumentEngine engine;
     private LinearLayout root, body, results; private TextView status;
@@ -185,21 +185,21 @@ public class MainActivity extends ComponentActivity {
     }
     private String empty(String s){return s.isEmpty()?getString(R.string.value_empty):s;}
     private void cropPage(int index){
-        try{Document d=selected.copy();BitmapFactory.Options options=new BitmapFactory.Options();options.inSampleSize=2;Bitmap preview=BitmapFactory.decodeFile(engine.pages(d).getJSONObject(index).getString("path"),options);if(preview==null)throw new IOException(getString(R.string.error_image_unavailable));CropView view=new CropView(this,preview);LinearLayout content=column();content.setPadding(dp(12),dp(8),dp(12),0);content.addView(label(getString(R.string.crop_hint),14,MUTED));content.addView(view,new LinearLayout.LayoutParams(-1,dp(380)));
+        try{Document d=selected.copy();BitmapFactory.Options options=new BitmapFactory.Options();options.inSampleSize=2;Bitmap preview=BitmapFactory.decodeFile(engine.pages(d).getJSONObject(index).getString("path"),options);if(preview==null)throw new IOException(getString(R.string.error_image_unavailable));CropView view=new CropView(this,preview);float[] detected=ImageProcessor.detect(preview);view.setCorners(detected);LinearLayout content=column();content.setPadding(dp(12),dp(8),dp(12),0);content.addView(label(getString(detected!=null?R.string.crop_hint_auto:R.string.crop_hint),14,MUTED));content.addView(view,new LinearLayout.LayoutParams(-1,dp(380)));
             AlertDialog dialog=new AlertDialog.Builder(this).setTitle(R.string.crop_title).setView(content).setNegativeButton(R.string.action_cancel,null).setPositiveButton(R.string.action_apply,(a,b)->{float[] corners=view.corners();run(getString(R.string.status_cropping),()->{engine.crop(d,index,corners);db.documents().save(d);engine.sweep(d);selected=d;documents=db.documents().all();},this::detail);}).create();dialog.setOnDismissListener(v->preview.recycle());dialog.show();
         }catch(Exception e){error(e.getLocalizedMessage());}
     }
     private void pageMenu(int index){
         new AlertDialog.Builder(this).setTitle(getString(R.string.page_title,index+1)).setItems(R.array.page_actions,(dialog,which)->{
             Document d=selected.copy();
-            if(which==7){new AlertDialog.Builder(this).setTitle(R.string.page_delete_title).setNegativeButton(R.string.action_cancel,null).setPositiveButton(R.string.action_delete,(a,b)->changePage(d,index,which)).show();}else changePage(d,index,which);
+            if(which==8){new AlertDialog.Builder(this).setTitle(R.string.page_delete_title).setNegativeButton(R.string.action_cancel,null).setPositiveButton(R.string.action_delete,(a,b)->changePage(d,index,which)).show();}else changePage(d,index,which);
         }).setNegativeButton(R.string.action_close,null).show();
     }
     private void changePage(Document d,int index,int which){run(getString(R.string.status_updating_page),()->{
         JSONArray pages=engine.pages(d);
-        if(which<=4)engine.edit(d,index,PAGE_ACTIONS[which]);
-        else if(which==7){if(pages.length()==1)throw new IOException(getString(R.string.error_last_page));pages.remove(index);d.pages=pages.toString();engine.rebuild(d);}
-        else{int dest=index+(which==5?-1:1);if(dest<0||dest>=pages.length())return;Object old=pages.get(index);pages.put(index,pages.get(dest));pages.put(dest,old);d.pages=pages.toString();engine.rebuild(d);}
+        if(which<=5)engine.edit(d,index,PAGE_ACTIONS[which]);
+        else if(which==8){if(pages.length()==1)throw new IOException(getString(R.string.error_last_page));pages.remove(index);d.pages=pages.toString();engine.rebuild(d);}
+        else{int dest=index+(which==6?-1:1);if(dest<0||dest>=pages.length())return;Object old=pages.get(index);pages.put(index,pages.get(dest));pages.put(dest,old);d.pages=pages.toString();engine.rebuild(d);}
         db.documents().save(d);engine.sweep(d);selected=d;documents=db.documents().all();
     },this::detail);}
     private void editMetadata(){

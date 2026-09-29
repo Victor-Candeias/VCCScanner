@@ -116,6 +116,90 @@ public class DocumentFlowTest {
             assertEquals(2,files(engine,doc));assertTrue(new File(current).exists());
         }finally{engine.deleteFiles(doc);first.delete();second.delete();}
     }
+    @Test public void automaticProcessingDeskewsAndCleansImportedPhoto() throws Exception {
+        Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();DocumentEngine engine=new DocumentEngine(context);Document doc=engine.create();
+        File photo=photo(context,"skewed-fixture.png","FATURA","Empresa XYZ, Lda.","NIF: 501234567","Data: 25/09/2026","Total: 19,70 EUR");
+        Bitmap raw=BitmapFactory.decodeFile(photo.getAbsolutePath());
+        try{
+            float[] corners=ImageProcessor.detect(raw);
+            assertNotNull("The page outline must be detected in a photographed document",corners);
+            Bitmap flat=ImageProcessor.warp(raw,corners);
+            assertNotNull(flat);
+            try{
+                // The perspective is undone, so the page recovers the aspect ratio it was drawn with.
+                assertEquals("Perspective must be corrected",PAGE_WIDTH/(float)PAGE_HEIGHT,flat.getWidth()/(float)flat.getHeight(),.08f);
+                assertTrue("A shadowed photo must be reported as needing enhancement",ImageProcessor.needsEnhancement(flat));
+                int before=illuminationRange(flat);
+                Bitmap cleaned=ImageProcessor.enhance(flat);
+                try{
+                    assertTrue("Shadow removal must flatten the illumination: "+before+" -> "+illuminationRange(cleaned),illuminationRange(cleaned)*2<before);
+                    assertFalse("The cleaned page must not need a second pass",ImageProcessor.needsEnhancement(cleaned));
+                    assertTrue("Cleaning must not lose text: "+text(cleaned),found(text(cleaned))>=found(text(raw)));
+                }finally{cleaned.recycle();}
+            }finally{flat.recycle();}
+            engine.importUris(doc,List.of(Uri.fromFile(photo)));
+            assertEquals(1,engine.pages(doc).length());
+            assertEquals("The corrected page and the untouched original",2,files(engine,doc));
+            assertEquals(doc.text,"501234567",doc.nif);assertEquals("Faturas",doc.category);assertEquals("19,70",doc.total);assertEquals("25/09/2026",doc.date);
+            assertTrue("The stored page must be the deskewed one",engine.pages(doc).getJSONObject(0).getInt("width")<raw.getWidth());
+            // "Original" still undoes everything, including the automatic correction.
+            engine.edit(doc,0,DocumentEngine.ACTION_ORIGINAL);assertEquals(raw.getWidth(),engine.pages(doc).getJSONObject(0).getInt("width"));
+            engine.edit(doc,0,DocumentEngine.ACTION_AUTO);assertTrue(doc.text,doc.text.contains("501234567"));
+        }finally{raw.recycle();engine.deleteFiles(doc);photo.delete();}
+    }
+    @Test public void flatScansAreLeftUntouchedByTheAutomaticCorrection() throws Exception {
+        Context context=InstrumentationRegistry.getInstrumentation().getTargetContext();
+        File fixture=fixture(context,"flat-fixture.png","FATURA","Empresa XYZ, Lda.");
+        Bitmap flat=BitmapFactory.decodeFile(fixture.getAbsolutePath());
+        try{
+            assertNull("A page that already fills the frame has nothing to deskew",ImageProcessor.detect(flat));
+            assertFalse("An evenly lit scan has nothing to correct",ImageProcessor.needsEnhancement(flat));
+            assertNull("Nothing to correct means no second copy of the page",ImageProcessor.process(flat));
+        }finally{flat.recycle();fixture.delete();}
+    }
+    private static final int PAGE_WIDTH=840,PAGE_HEIGHT=1330;
+    /** Corners of the page inside the photographed fixture, clockwise from the top left. */
+    private static final float[] SKEWED={300,120,1130,230,1060,1560,230,1450};
+    private static int found(String text){
+        int count=0;
+        for(String token:new String[]{"FATURA","Empresa","501234567","25/09/2026","19,70"})if(text.contains(token))count++;
+        return count;
+    }
+    private static String text(Bitmap bitmap) throws Exception {
+        var recognizer=com.google.mlkit.vision.text.TextRecognition.getClient(com.google.mlkit.vision.text.latin.TextRecognizerOptions.DEFAULT_OPTIONS);
+        try{return com.google.android.gms.tasks.Tasks.await(recognizer.process(com.google.mlkit.vision.common.InputImage.fromBitmap(bitmap,0)),90,java.util.concurrent.TimeUnit.SECONDS).getText();}finally{recognizer.close();}
+    }
+    /** Difference between the brightest and the darkest paper across the page, a shadow measure. */
+    private static int illuminationRange(Bitmap bitmap){
+        int min=255,max=0;
+        for(int gy=0;gy<6;gy++)for(int gx=0;gx<6;gx++){
+            int paper=0;
+            for(int y=gy*bitmap.getHeight()/6;y<(gy+1)*bitmap.getHeight()/6;y+=4)for(int x=gx*bitmap.getWidth()/6;x<(gx+1)*bitmap.getWidth()/6;x+=4){
+                int pixel=bitmap.getPixel(x,y),value=(Color.red(pixel)*77+Color.green(pixel)*151+Color.blue(pixel)*28)>>8;
+                if(value>paper)paper=value;
+            }
+            min=Math.min(min,paper);max=Math.max(max,paper);
+        }
+        return max-min;
+    }
+    /** A page photographed at an angle over a dark surface, crossed by a shadow. */
+    private static File photo(Context context,String name,String... lines) throws Exception {
+        File file=new File(context.getCacheDir(),name);
+        Bitmap page=Bitmap.createBitmap(PAGE_WIDTH,PAGE_HEIGHT,Bitmap.Config.ARGB_8888);
+        Bitmap photo=Bitmap.createBitmap(1400,1700,Bitmap.Config.ARGB_8888);
+        try{
+            Canvas sheet=new Canvas(page);sheet.drawColor(Color.WHITE);Paint paint=new Paint(Paint.ANTI_ALIAS_FLAG);paint.setTextSize(54);paint.setColor(Color.BLACK);
+            for(int i=0;i<lines.length;i++)sheet.drawText(lines[i],70,200+i*120,paint);
+            Canvas canvas=new Canvas(photo);canvas.drawColor(Color.rgb(62,60,58));
+            Matrix matrix=new Matrix();
+            assertTrue(matrix.setPolyToPoly(new float[]{0,0,PAGE_WIDTH,0,PAGE_WIDTH,PAGE_HEIGHT,0,PAGE_HEIGHT},0,SKEWED,0,4));
+            canvas.drawBitmap(page,matrix,new Paint(Paint.FILTER_BITMAP_FLAG));
+            Paint shadow=new Paint();shadow.setShader(new LinearGradient(0,0,photo.getWidth(),photo.getHeight(),0x00000000,0x78000000,Shader.TileMode.CLAMP));
+            canvas.drawRect(0,0,photo.getWidth(),photo.getHeight(),shadow);
+            try(OutputStream out=new FileOutputStream(file)){photo.compress(Bitmap.CompressFormat.PNG,100,out);}
+        }finally{page.recycle();photo.recycle();}
+        return file;
+    }
     private static int files(DocumentEngine engine,Document d){File[] files=engine.directory(d.id).listFiles();return files==null?0:files.length;}
     private static File fixture(Context context,String name,String... lines) throws Exception {
         File file=new File(context.getCacheDir(),name);Bitmap bitmap=Bitmap.createBitmap(1200,1600,Bitmap.Config.ARGB_8888);
