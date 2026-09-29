@@ -12,6 +12,8 @@ $env:ANDROID_HOME="$env:LOCALAPPDATA\Android\Sdk"
 .\gradlew.bat assembleDebug test lint
 # Com emulador ou telemóvel ligado por ADB:
 .\gradlew.bat connectedDebugAndroidTest
+# A mesma suite contra o build release minificado por R8:
+.\gradlew.bat -PvccTestBuildType=release connectedAndroidTest
 ```
 
 APK de desenvolvimento: `app/build/outputs/apk/debug/app-debug.apk`.
@@ -20,7 +22,47 @@ APK de desenvolvimento: `app/build/outputs/apk/debug/app-debug.apk`.
 adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```
 
-O APK debug é assinado automaticamente para testes. A publicação exige uma chave de assinatura própria e configuração de release; nenhuma chave privada foi incluída.
+O APK debug é assinado automaticamente para testes.
+
+## Publicação
+
+O build `release` usa R8 com `minifyEnabled` e `shrinkResources`; as regras de manutenção estão em
+`app/proguard-rules.pro` e cobrem o `RoomDatabase` gerado, as entidades, os detetores do ML Kit e os
+`CREATOR` dos parcelables devolvidos pelo scanner.
+
+A versão é definida por `vccVersionName` (`MAJOR.MINOR.PATCH`, cada parte abaixo de 100) e o
+`versionCode` é derivado dela como `MAJOR*10000 + MINOR*100 + PATCH`, para nunca recuar nem repetir
+um código já publicado:
+
+```powershell
+.\gradlew.bat bundleRelease -PvccVersionName=1.1.0   # versionCode 10100
+```
+
+Nenhuma chave privada está no repositório. As credenciais de assinatura são lidas de
+`local.properties` (ignorado pelo git) ou das variáveis de ambiente equivalentes; sem elas o build
+release é produzido sem assinatura.
+
+| `local.properties` | Variável de ambiente |
+| --- | --- |
+| `vcc.keystore` | `VCC_KEYSTORE` |
+| `vcc.keystore.password` | `VCC_KEYSTORE_PASSWORD` |
+| `vcc.key.alias` | `VCC_KEY_ALIAS` |
+| `vcc.key.password` | `VCC_KEY_PASSWORD` |
+
+O App Bundle assinado fica em `app/build/outputs/bundle/release/app-release.aab`.
+
+`-PvccTestBuildType=release` corre a suite instrumentada contra esse build minificado. Nessa
+execução são acrescentadas as regras de `app/proguard-instrumentation-rules.pro`, que mantêm o que
+só o harness de testes alcança (`pt.vcc.scanner.**`, `androidx.room.**`, kotlin-stdlib e
+`androidx.tracing.Trace`); o APK publicado continua a usar apenas `app/proguard-rules.pro`.
+
+`.github/workflows/android.yml` corre `test`, `lint` e `assembleDebug` em cada push e pull request,
+e produz o `.aab` assinado nas tags `v*`, a partir dos segredos `VCC_KEYSTORE_BASE64`,
+`VCC_KEYSTORE_PASSWORD`, `VCC_KEY_ALIAS` e `VCC_KEY_PASSWORD`.
+
+Para a ficha da Play Store: [`Docs/PRIVACIDADE.md`](Docs/PRIVACIDADE.md) e
+[`Docs/PLAY-DATA-SAFETY.md`](Docs/PLAY-DATA-SAFETY.md). O ícone do launcher é gerado a partir de
+`Docs/VCCScannere.png` por `Docs/generate-launcher-icons.py`.
 
 ## Fluxo implementado
 

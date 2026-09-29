@@ -1,5 +1,26 @@
 plugins { id 'com.android.application' }
 
+/**
+ * versionName is the single source of truth: MAJOR.MINOR.PATCH with every part below 100.
+ * versionCode is derived from it, so a published code can never be reused or go backwards.
+ */
+def appVersionName = providers.gradleProperty('vccVersionName').getOrElse('1.0.0')
+def version = appVersionName.tokenize('.')*.toInteger()
+def appVersionCode = version[0] * 10000 + version[1] * 100 + version[2]
+
+/**
+ * Release credentials never live in the repository: local.properties is ignored by git and CI
+ * passes them as environment variables. Without them the release build is simply left unsigned.
+ */
+def localProperties = new Properties()
+def localPropertiesFile = rootProject.file('local.properties')
+if (localPropertiesFile.exists()) localPropertiesFile.withInputStream { localProperties.load(it) }
+def credential = { String property, String variable -> localProperties.getProperty(property) ?: System.getenv(variable) }
+def keystore = credential('vcc.keystore', 'VCC_KEYSTORE')
+
+/** Build type the instrumented suite runs against: debug by default, release to exercise R8. */
+def testBuildTypeName = providers.gradleProperty('vccTestBuildType').getOrElse('debug')
+
 android {
     namespace 'pt.vcc.scanner'
     compileSdk 37
@@ -7,12 +28,34 @@ android {
         applicationId 'pt.vcc.scanner'
         minSdk 28
         targetSdk 37
-        versionCode 1
-        versionName '1.0.0'
+        versionCode appVersionCode
+        versionName appVersionName
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
-    buildTypes { release { minifyEnabled false } }
+    signingConfigs {
+        release {
+            if (keystore) {
+                storeFile rootProject.file(keystore)
+                storePassword credential('vcc.keystore.password', 'VCC_KEYSTORE_PASSWORD')
+                keyAlias credential('vcc.key.alias', 'VCC_KEY_ALIAS')
+                keyPassword credential('vcc.key.password', 'VCC_KEY_PASSWORD')
+            }
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            // Only while the suite is deliberately pointed at this build type: the instrumentation
+            // harness resolves a few classes through the classloader of the application under test.
+            if (testBuildTypeName == 'release') proguardFile 'proguard-instrumentation-rules.pro'
+            testProguardFiles 'proguard-test-rules.pro'
+            if (keystore) signingConfig signingConfigs.release
+        }
+    }
+    testBuildType testBuildTypeName
 }
 dependencies {
     implementation 'androidx.activity:activity:1.13.0'
